@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Personal Finance Tracker</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <div id="login-screen">
+    <div id="login-box">
+      <h1>Enter password</h1>
+      <input type="password" id="login-password" placeholder="Password" autofocus />
+      <button id="login-submit">Unlock</button>
+      <div id="login-error"></div>
+    </div>
+  </div>
+
+  <div id="app" hidden>
+    <div class="card" id="balances-card">
+      <div class="balance-row">
+        <div class="balance-box">
+          <div class="label">Bank Balance</div>
+          <div class="value" id="bank-balance">-</div>
+        </div>
+        <div class="balance-box credit">
+          <div class="label">Owed on Credit Card</div>
+          <div class="value" id="credit-outstanding">-</div>
+          <button id="settle-credit-btn" hidden>Pay off now</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="alerts" class="card"></div>
+
+    <div class="card">
+      <h2>Reminders</h2>
+      <ul id="reminders-list"></ul>
+      <form id="reminder-form">
+        <input type="text" id="reminder-text" placeholder="Add a reminder..." />
+        <button type="submit">Add</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="period-controls">
+        <select id="month-select"></select>
+        <select id="year-select"></select>
+        <div class="tab-buttons">
+          <button id="tab-monthly" class="active">Monthly</button>
+          <button id="tab-yearly">Yearly</button>
+        </div>
+      </div>
+
+      <div id="monthly-view">
+        <div class="stat-row">
+          <div class="stat"><div class="label">Income</div><div class="value" id="stat-income">-</div></div>
+          <div class="stat"><div class="label">Spent</div><div class="value" id="stat-expense">-</div></div>
+          <div class="stat"><div class="label">Saved</div><div class="value" id="stat-savings">-</div></div>
+        </div>
+        <canvas id="pie-chart" height="220"></canvas>
+      </div>
+
+      <div id="yearly-view" hidden>
+        <canvas id="yearly-chart" height="220"></canvas>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Ledger</h2>
+      <ul id="ledger-list"></ul>
+    </div>
+  </div>
+
+  <div id="chat-bar" hidden>
+    <input type="text" id="chat-input" placeholder='Type e.g. "spent 85 on vegetables"' />
+    <button id="chat-send">Send</button>
+  </div>
+
+  <div id="confirm-modal" hidden>
+    <div id="confirm-box">
+      <h3>Confirm entry</h3>
+      <label>Type</label>
+      <select id="confirm-type">
+        <option value="expense">Expense</option>
+        <option value="income">Income</option>
+      </select>
+      <label>Amount</label>
+      <input type="number" id="confirm-amount" step="0.01" />
+      <label>Category</label>
+      <input type="text" id="confirm-category" />
+      <label>Classification</label>
+      <select id="confirm-classification">
+        <option value="">-</option>
+        <option value="need">Need</option>
+        <option value="want">Want</option>
+        <option value="luxury">Luxury</option>
+        <option value="savings">Savings</option>
+      </select>
+      <label id="confirm-payment-label">Paid with</label>
+      <select id="confirm-payment-method">
+        <option value="debit">Debit (bank account)</option>
+        <option value="credit">Credit card</option>
+      </select>
+      <label>Date</label>
+      <input type="date" id="confirm-date" />
+      <label>Note</label>
+      <input type="text" id="confirm-note" />
+      <div id="confirm-actions">
+        <button id="confirm-cancel">Cancel</button>
+        <button id="confirm-save">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" integrity="sha384-NrKB+u6Ts6AtkIhwPixiKTzgSKNblyhlk0Sohlgar9UHUBzai/sgnNNWWd291xqt" crossorigin="anonymous"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
