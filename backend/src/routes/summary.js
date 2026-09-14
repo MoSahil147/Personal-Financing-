@@ -29,26 +29,38 @@ router.get('/monthly', async (req, res) => {
   const byCategory = {};
   const byClassification = { need: 0, want: 0, luxury: 0 };
   const expenseByMethod = { debit: 0, credit: 0 };
+  let investedThisMonth = 0;
   for (const e of entries.filter((e) => e.type === 'expense')) {
     byCategory[e.category] = (byCategory[e.category] || 0) + Number(e.amount);
     if (e.classification && byClassification[e.classification] !== undefined) {
       byClassification[e.classification] += Number(e.amount);
     }
+    if (e.classification === 'investment') investedThisMonth += Number(e.amount);
     expenseByMethod[e.payment_method === 'credit' ? 'credit' : 'debit'] += Number(e.amount);
   }
+
+  const { data: yearEntries, error: yearErr } = await supabase
+    .from('entries')
+    .select('amount, classification')
+    .eq('classification', 'investment')
+    .gte('entry_date', `${year}-01-01`)
+    .lt('entry_date', `${year + 1}-01-01`);
+  if (yearErr) return res.status(500).json({ error: yearErr.message });
+  const investedThisYear = yearEntries.reduce((s, e) => s + Number(e.amount), 0);
 
   const { data: budgets, error: budgetErr } = await supabase.from('budgets').select('*');
   if (budgetErr) return res.status(500).json({ error: budgetErr.message });
 
-  const { data: settings, error: settingsErr } = await supabase
+  // Savings target is a nice-to-have on top of the core numbers above - if the
+  // settings row/column isn't there yet, don't take down the whole dashboard.
+  const { data: settings } = await supabase
     .from('settings')
     .select('monthly_savings_target')
     .eq('id', 'main')
     .single();
-  if (settingsErr) return res.status(500).json({ error: settingsErr.message });
 
   const savings = income - expense;
-  const savingsTarget = Number(settings.monthly_savings_target) || 0;
+  const savingsTarget = Number(settings?.monthly_savings_target) || 0;
   const savingsPercent = savingsTarget > 0 ? Math.round((savings / savingsTarget) * 100) : null;
 
   // A budget's category can be a single name ("Groceries") or a comma-separated
@@ -101,6 +113,8 @@ router.get('/monthly', async (req, res) => {
     savings,
     savingsTarget,
     savingsPercent,
+    investedThisMonth,
+    investedThisYear,
     byCategory: Object.entries(byCategory).map(([category, total]) => ({ category, total })),
     byClassification,
     budgetStatus,
@@ -120,8 +134,9 @@ router.get('/yearly', async (req, res) => {
 
   if (error) return res.status(500).json({ error: error.message });
 
-  const months = Array.from({ length: 12 }, (_, i) => ({ month: i + 1, income: 0, expense: 0 }));
+  const months = Array.from({ length: 12 }, (_, i) => ({ month: i + 1, income: 0, expense: 0, invested: 0 }));
   const byCategory = {};
+  let investedThisYear = 0;
 
   for (const e of entries) {
     const m = Number(e.entry_date.slice(5, 7)) - 1;
@@ -129,6 +144,10 @@ router.get('/yearly', async (req, res) => {
     else {
       months[m].expense += Number(e.amount);
       byCategory[e.category] = (byCategory[e.category] || 0) + Number(e.amount);
+      if (e.classification === 'investment') {
+        months[m].invested += Number(e.amount);
+        investedThisYear += Number(e.amount);
+      }
     }
   }
 
@@ -136,6 +155,7 @@ router.get('/yearly', async (req, res) => {
 
   res.json({
     months: withSavings,
+    investedThisYear,
     byCategory: Object.entries(byCategory).map(([category, total]) => ({ category, total })),
   });
 });

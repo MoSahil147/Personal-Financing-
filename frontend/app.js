@@ -178,6 +178,9 @@ async function refreshMonthly() {
   document.getElementById('eb-credit').textContent = summary.expenseByMethod.credit.toFixed(2);
   document.getElementById('eb-debit').textContent = `-${summary.expenseByMethod.debit.toFixed(2)}`;
 
+  document.getElementById('invested-month').textContent = summary.investedThisMonth.toFixed(2);
+  document.getElementById('invested-year').textContent = summary.investedThisYear.toFixed(2);
+
   const alertsEl = document.getElementById('alerts');
   alertsEl.innerHTML = '';
   if (summary.alerts.length === 0) {
@@ -246,6 +249,8 @@ function renderPieChart(byCategory) {
 
 async function refreshYearly() {
   const summary = await api(`/api/summary/yearly?year=${state.year}`);
+  document.getElementById('invested-year-tab').textContent = summary.investedThisYear.toFixed(2);
+
   const ctx = document.getElementById('yearly-chart');
   if (state.yearlyChart) state.yearlyChart.destroy();
 

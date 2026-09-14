@@ -1,5 +1,15 @@
 -- Run this once in the Supabase SQL editor for your project.
 -- Single-user app: no auth/user_id columns needed, access is gated by the backend password.
+--
+-- If you already created these tables before, `create table if not exists`
+-- below is a no-op for them - existing columns/constraints won't update.
+-- Migrations needed for tables created before a given feature was added:
+--   -- monthly_savings_target (savings goal tracking):
+--   alter table settings add column if not exists monthly_savings_target numeric(12,2) not null default 0;
+--   -- 'investment' classification (investment tracking):
+--   alter table entries drop constraint if exists entries_classification_check;
+--   alter table entries add constraint entries_classification_check
+--     check (classification in ('need', 'want', 'luxury', 'savings', 'investment'));
 
 create table if not exists entries (
   id uuid primary key default gen_random_uuid(),
@@ -7,7 +17,7 @@ create table if not exists entries (
   type text not null check (type in ('income', 'expense')),
   amount numeric(12,2) not null check (amount > 0),
   category text not null,
-  classification text check (classification in ('need', 'want', 'luxury', 'savings')),
+  classification text check (classification in ('need', 'want', 'luxury', 'savings', 'investment')),
   payment_method text check (payment_method in ('debit', 'credit')), -- expenses only; income always hits the bank directly
   note text,
   raw_input text,

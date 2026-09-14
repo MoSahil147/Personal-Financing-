@@ -72,10 +72,23 @@
           <div class="savings-goal-bar"><div id="savings-goal-fill"></div></div>
         </div>
         <div id="budgets-list"></div>
+        <div class="investment-box">
+          <div class="label">Invested in stock market</div>
+          <div class="investment-row">
+            <div><span class="investment-value" id="invested-month">-</span><span class="investment-sub">this month</span></div>
+            <div><span class="investment-value" id="invested-year">-</span><span class="investment-sub">this year</span></div>
+          </div>
+        </div>
         <canvas id="pie-chart" height="220"></canvas>
       </div>
 
       <div id="yearly-view" hidden>
+        <div class="investment-box">
+          <div class="label">Invested in stock market</div>
+          <div class="investment-row">
+            <div><span class="investment-value" id="invested-year-tab">-</span><span class="investment-sub">so far this year</span></div>
+          </div>
+        </div>
         <canvas id="yearly-chart" height="220"></canvas>
       </div>
     </div>

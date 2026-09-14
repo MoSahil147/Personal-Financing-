@@ -186,6 +186,12 @@ body {
 .budget-item-bar > div { height: 100%; border-radius: 6px; transition: width 0.3s, background 0.3s; background: var(--good); }
 .budget-item-bar > div.close { background: var(--danger); }
 
+.investment-box { margin-bottom: 14px; background: #0d0f14; border-radius: 8px; padding: 10px 12px; }
+.investment-box .label { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+.investment-row { display: flex; gap: 20px; flex-wrap: wrap; }
+.investment-value { display: block; font-size: 18px; font-weight: 700; color: #7db8ff; }
+.investment-sub { display: block; font-size: 11px; color: var(--muted); }
+
 .expense-breakdown { margin-bottom: 14px; background: #0d0f14; border-radius: 8px; padding: 10px 12px; }
 .eb-row { display: flex; justify-content: space-between; font-size: 14px; padding: 3px 0; }
 .eb-total { font-weight: 700; font-size: 15px; border-bottom: 1px solid var(--border); padding-bottom: 6px; margin-bottom: 4px; }

@@ -25,14 +25,15 @@ For "log_entry", fill "entry" using these rules:
 Known categories already used by this user: ${knownCategories.join(', ') || '(none yet)'}. Reuse a known category when it clearly matches instead of inventing a near-duplicate.
 Pick a specific, sensible category based on what was actually bought - do not default everything to a generic bucket. Typical categories: Groceries, Shopping, Dining, Transport, Fuel, Utilities, Rent, Entertainment, Subscriptions, Health, Travel, Education, Gifts, Repayment, Refund, Salary. "Shopping" means discretionary retail purchases (clothes, electronics, home goods) - groceries/vegetables/food staples always go under "Groceries", not "Shopping".
 Any money coming TO the user counts as type "income" - this includes salary, but also someone paying them back, a refund, a reimbursement, cashback, or a gift received.
-Classify every expense as exactly one of: need, want, luxury. Income entries have classification "savings" only if the note is explicitly about saving/transferring to savings, otherwise null.
+Putting money into stocks, mutual funds, ETFs, crypto, or "the market" is type "expense" (it leaves the bank account) with category "Investment" and classification "investment" - it is NOT a need/want/luxury purchase.
+Classify every other expense as exactly one of: need, want, luxury. Income entries have classification "savings" only if the note is explicitly about saving/transferring to savings, otherwise null.
 For expenses, set payment_method to "credit" only if the text explicitly mentions credit card / credit; otherwise default to "debit". Income entries have payment_method null.
 If the text mentions no explicit date, use today's date. If amount is missing or unclear, set amount to null.
 
 Respond with ONLY a JSON object, no prose, matching this exact shape:
 {
   "intent": "log_entry" | "add_reminder" | "remove_reminder" | "chat",
-  "entry": { "type": "income"|"expense", "amount": number|null, "category": string, "classification": "need"|"want"|"luxury"|"savings"|null, "payment_method": "debit"|"credit"|null, "date": "YYYY-MM-DD", "note": string } | null,
+  "entry": { "type": "income"|"expense", "amount": number|null, "category": string, "classification": "need"|"want"|"luxury"|"savings"|"investment"|null, "payment_method": "debit"|"credit"|null, "date": "YYYY-MM-DD", "note": string } | null,
   "reminder_text": string | null,
   "reminder_due_date": "YYYY-MM-DD" | null,
   "remove_reminder_id": string | null,
