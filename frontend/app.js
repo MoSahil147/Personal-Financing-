@@ -1,6 +1,19 @@
 const API = window.API_BASE_URL;
 const TOKEN_KEY = 'finance_token';
 
+// Fixed palette so each category keeps the same color across refreshes/months
+// instead of Chart.js's default set, which repeats after a handful of slices.
+const CHART_COLORS = [
+  '#4f8dfd', '#4fbf7a', '#ef5a5a', '#e0a94e', '#a78bfa',
+  '#38bdf8', '#fb7185', '#34d399', '#f59e0b', '#c084fc',
+];
+
+function colorForLabel(label) {
+  let hash = 0;
+  for (let i = 0; i < label.length; i++) hash = (hash * 31 + label.charCodeAt(i)) >>> 0;
+  return CHART_COLORS[hash % CHART_COLORS.length];
+}
+
 const state = {
   month: new Date().getMonth() + 1,
   year: new Date().getFullYear(),
@@ -241,9 +254,12 @@ function renderPieChart(byCategory) {
     type: 'pie',
     data: {
       labels: byCategory.map((c) => c.category),
-      datasets: [{ data: byCategory.map((c) => c.total) }],
+      datasets: [{ data: byCategory.map((c) => c.total), backgroundColor: byCategory.map((c) => colorForLabel(c.category)) }],
     },
-    options: { plugins: { legend: { position: 'bottom', labels: { color: '#e8eaed' } } } },
+    options: {
+      maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { color: '#e8eaed', boxWidth: 12, font: { size: 11 } } } },
+    },
   });
 }
 
@@ -263,10 +279,12 @@ async function refreshYearly() {
       datasets: [
         { label: 'Income', data: summary.months.map((m) => m.income), backgroundColor: '#4fbf7a' },
         { label: 'Expense', data: summary.months.map((m) => m.expense), backgroundColor: '#ef5a5a' },
+        { label: 'Invested', data: summary.months.map((m) => m.invested), backgroundColor: '#38bdf8' },
       ],
     },
     options: {
-      plugins: { legend: { labels: { color: '#e8eaed' } } },
+      maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: '#e8eaed', boxWidth: 12, font: { size: 11 } } } },
       scales: {
         x: { ticks: { color: '#9aa0ac' } },
         y: { ticks: { color: '#9aa0ac' } },

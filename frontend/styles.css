@@ -199,6 +199,11 @@ body {
 .eb-debit span:last-child { color: var(--muted); }
 
 canvas { max-width: 100%; }
+.chart-box { position: relative; height: 220px; max-height: 40vh; }
+
+@media (max-width: 480px) {
+  .chart-box { height: 180px; }
+}
 
 #ledger-list { list-style: none; padding: 0; margin: 0; max-height: 320px; overflow-y: auto; }
 #ledger-list li {
