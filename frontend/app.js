@@ -87,9 +87,8 @@ function populateSelectors() {
   monthSel.innerHTML = months.map((m, i) => `<option value="${i + 1}">${m}</option>`).join('');
   monthSel.value = state.month;
 
-  const currentYear = new Date().getFullYear();
   const years = [];
-  for (let y = currentYear - 3; y <= currentYear + 1; y++) years.push(y);
+  for (let y = 2026; y <= 2099; y++) years.push(y);
   yearSel.innerHTML = years.map((y) => `<option value="${y}">${y}</option>`).join('');
   yearSel.value = state.year;
 
