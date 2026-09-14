@@ -19,6 +19,8 @@
 --   update settings set cash_balance = <your cash> where id = 'main';
 --   -- priority stars on reminders:
 --   alter table reminders add column if not exists priority smallint not null default 3 check (priority between 1 and 5);
+--   -- credit card limit (color-coded warning on the credit widget):
+--   alter table settings add column if not exists credit_card_limit numeric(12,2) not null default 0;
 
 create table if not exists entries (
   id uuid primary key default gen_random_uuid(),
@@ -41,10 +43,11 @@ create table if not exists settings (
   bank_balance numeric(12,2) not null default 0,
   credit_outstanding numeric(12,2) not null default 0,
   monthly_savings_target numeric(12,2) not null default 0,
-  cash_balance numeric(12,2) not null default 0
+  cash_balance numeric(12,2) not null default 0,
+  credit_card_limit numeric(12,2) not null default 0 -- 0 = no limit set, widget stays blue
 );
-insert into settings (id, bank_balance, credit_outstanding, monthly_savings_target, cash_balance)
-values ('main', 0, 0, 0, 0)
+insert into settings (id, bank_balance, credit_outstanding, monthly_savings_target, cash_balance, credit_card_limit)
+values ('main', 0, 0, 0, 0, 0)
 on conflict (id) do nothing;
 
 create table if not exists budgets (

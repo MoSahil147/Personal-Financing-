@@ -295,8 +295,11 @@ async function refreshBalances() {
   const cash = Number(settings.cash_balance);
   document.getElementById('bank-balance').textContent = `${bank.toFixed(2)} AED`;
   document.getElementById('cash-balance').textContent = `${cash.toFixed(2)} AED`;
-  document.getElementById('credit-outstanding').textContent = `${Number(settings.credit_outstanding).toFixed(2)} AED`;
-  document.getElementById('settle-credit-btn').hidden = Number(settings.credit_outstanding) <= 0;
+  const owed = Number(settings.credit_outstanding);
+  const limit = Number(settings.credit_card_limit) || 0;
+  document.getElementById('credit-outstanding').textContent = `${owed.toFixed(2)} AED`;
+  document.getElementById('settle-credit-btn').hidden = owed <= 0;
+  document.getElementById('credit-box').classList.toggle('over-limit', limit > 0 && owed >= limit);
   document.getElementById('total-capital').textContent = `${(bank + cash).toFixed(2)} AED`;
 }
 

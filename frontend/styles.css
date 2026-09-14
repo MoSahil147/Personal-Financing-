@@ -97,8 +97,10 @@ body {
 }
 .balance-box .label { color: var(--muted); font-size: 12px; }
 .balance-box .value { font-size: 22px; font-weight: 700; margin-top: 2px; }
-.balance-box.credit .value { color: var(--danger); }
-.balance-box.credit { border: 1px solid rgba(239, 90, 90, 0.35); }
+.balance-box.credit .value { color: var(--accent); }
+.balance-box.credit { border: 1px solid rgba(79, 141, 253, 0.35); }
+.balance-box.credit.over-limit .value { color: var(--danger); }
+.balance-box.credit.over-limit { border: 1px solid rgba(239, 90, 90, 0.35); }
 .balance-box.credit button {
   margin-top: 8px;
   width: 100%;

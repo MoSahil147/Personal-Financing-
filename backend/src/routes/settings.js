@@ -48,6 +48,25 @@ router.put('/cash-balance', async (req, res) => {
   res.json(data);
 });
 
+// Set/update your credit card limit (drives the blue -> red color switch on
+// the credit widget once you're at/over it).
+router.put('/credit-card-limit', async (req, res) => {
+  const { credit_card_limit } = req.body || {};
+  if (credit_card_limit === undefined || isNaN(Number(credit_card_limit))) {
+    return res.status(400).json({ error: 'credit_card_limit must be a number' });
+  }
+
+  const { data, error } = await supabase
+    .from('settings')
+    .update({ credit_card_limit: Number(credit_card_limit) })
+    .eq('id', 'main')
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
 // Withdraw cash from the bank (e.g. an ATM withdrawal): moves money from
 // bank_balance to cash_balance. Not income or spending - a pure transfer.
 router.post('/withdraw-cash', async (req, res) => {
