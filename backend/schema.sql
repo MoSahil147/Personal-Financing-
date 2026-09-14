@@ -10,8 +10,6 @@
 --   alter table entries drop constraint if exists entries_classification_check;
 --   alter table entries add constraint entries_classification_check
 --     check (classification in ('need', 'want', 'luxury', 'savings', 'investment'));
---   -- priority stars on reminders:
---   alter table reminders add column if not exists priority smallint not null default 3 check (priority between 1 and 5);
 --   -- cash tracking (cash_balance + 'cash' as a payment_method):
 --   alter table settings add column if not exists cash_balance numeric(12,2) not null default 0;
 --   alter table entries drop constraint if exists entries_payment_method_check;
@@ -19,6 +17,8 @@
 --     check (payment_method in ('debit', 'credit', 'cash'));
 --   -- then privately seed your real cash-on-hand (never commit the number):
 --   update settings set cash_balance = <your cash> where id = 'main';
+--   -- priority stars on reminders:
+--   alter table reminders add column if not exists priority smallint not null default 3 check (priority between 1 and 5);
 
 create table if not exists entries (
   id uuid primary key default gen_random_uuid(),

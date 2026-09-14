@@ -238,7 +238,7 @@ function buildStarPicker(container, initial, onSelect) {
   return { get value() { return selected; } };
 }
 
-let newReminderStars = null;
+let newReminderStars = buildStarPicker(document.getElementById('new-reminder-stars'), 3, () => {});
 
 async function refreshReminders() {
   const reminders = await api('/api/reminders');
@@ -271,8 +271,6 @@ async function refreshReminders() {
     });
   });
 }
-
-newReminderStars = buildStarPicker(document.getElementById('new-reminder-stars'), 3, () => {});
 
 document.getElementById('reminder-form').addEventListener('submit', async (e) => {
   e.preventDefault();
