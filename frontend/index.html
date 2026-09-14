@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Personal Finance Tracker</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -59,6 +59,19 @@
           <div class="stat"><div class="label">Spent</div><div class="value" id="stat-expense">-</div></div>
           <div class="stat"><div class="label">Saved</div><div class="value" id="stat-savings">-</div></div>
         </div>
+        <div class="expense-breakdown">
+          <div class="eb-row eb-total"><span>Total Expense</span><span id="eb-total">-</span></div>
+          <div class="eb-row eb-credit"><span>Credit Card</span><span id="eb-credit">-</span></div>
+          <div class="eb-row eb-debit"><span>Debit Card</span><span id="eb-debit">-</span></div>
+        </div>
+        <div id="savings-goal-row" class="savings-goal" hidden>
+          <div class="savings-goal-labels">
+            <span>Savings goal: <span id="savings-goal-amount">-</span></span>
+            <span id="savings-goal-percent">-</span>
+          </div>
+          <div class="savings-goal-bar"><div id="savings-goal-fill"></div></div>
+        </div>
+        <div id="budgets-list"></div>
         <canvas id="pie-chart" height="220"></canvas>
       </div>
 

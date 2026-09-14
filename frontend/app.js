@@ -174,6 +174,10 @@ async function refreshMonthly() {
   savingsEl.textContent = summary.savings.toFixed(2);
   savingsEl.className = 'value ' + (summary.savings >= 0 ? 'good' : 'bad');
 
+  document.getElementById('eb-total').textContent = summary.expense.toFixed(2);
+  document.getElementById('eb-credit').textContent = summary.expenseByMethod.credit.toFixed(2);
+  document.getElementById('eb-debit').textContent = `-${summary.expenseByMethod.debit.toFixed(2)}`;
+
   const alertsEl = document.getElementById('alerts');
   alertsEl.innerHTML = '';
   if (summary.alerts.length === 0) {
@@ -187,7 +191,42 @@ async function refreshMonthly() {
     }
   }
 
+  renderSavingsGoal(summary.savingsTarget, summary.savings, summary.savingsPercent);
+  renderBudgets(summary.budgetStatus);
   renderPieChart(summary.byCategory);
+}
+
+function renderBudgets(budgetStatus) {
+  const list = document.getElementById('budgets-list');
+  list.innerHTML = '';
+  for (const b of budgetStatus) {
+    const clamped = Math.max(0, Math.min(100, b.percent));
+    const close = b.percent >= 80;
+    const item = document.createElement('div');
+    item.className = 'budget-item';
+    item.innerHTML = `
+      <div class="budget-item-labels">
+        <span class="category">${escapeHtml(b.category)}</span>
+        <span>${b.spent.toFixed(2)} / ${b.limit.toFixed(2)}</span>
+      </div>
+      <div class="budget-item-bar"><div class="${close ? 'close' : ''}" style="width:${clamped}%"></div></div>`;
+    list.appendChild(item);
+  }
+}
+
+function renderSavingsGoal(target, savings, percent) {
+  const row = document.getElementById('savings-goal-row');
+  if (!target || target <= 0) {
+    row.hidden = true;
+    return;
+  }
+  row.hidden = false;
+  document.getElementById('savings-goal-amount').textContent = `${target.toFixed(2)}`;
+  document.getElementById('savings-goal-percent').textContent = `${percent}%`;
+  const fill = document.getElementById('savings-goal-fill');
+  const clamped = Math.max(0, Math.min(100, percent));
+  fill.style.width = `${clamped}%`;
+  fill.className = percent < 60 ? 'behind' : '';
 }
 
 function renderPieChart(byCategory) {
@@ -274,11 +313,21 @@ async function sendChat() {
   input.value = '';
 
   try {
-    const { suggestion, raw_input } = await api('/api/entries/parse', {
-      method: 'POST',
-      body: JSON.stringify({ text }),
-    });
-    openConfirmModal(suggestion, raw_input);
+    const result = await api('/api/chat', { method: 'POST', body: JSON.stringify({ text }) });
+
+    if (result.intent === 'log_entry') {
+      openConfirmModal(result.suggestion, result.raw_input);
+    } else if (result.intent === 'add_reminder') {
+      refreshReminders();
+    } else if (result.intent === 'remove_reminder') {
+      if (result.removed) {
+        refreshReminders();
+      } else {
+        alert(result.reply || "Couldn't find that reminder.");
+      }
+    } else {
+      alert(result.reply || 'Not sure what you meant.');
+    }
   } catch (err) {
     alert(err.message);
   }

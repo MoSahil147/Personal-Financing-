@@ -20,10 +20,11 @@ create table if not exists entries (
 create table if not exists settings (
   id text primary key default 'main',
   bank_balance numeric(12,2) not null default 0,
-  credit_outstanding numeric(12,2) not null default 0
+  credit_outstanding numeric(12,2) not null default 0,
+  monthly_savings_target numeric(12,2) not null default 0
 );
-insert into settings (id, bank_balance, credit_outstanding)
-values ('main', 0, 0)
+insert into settings (id, bank_balance, credit_outstanding, monthly_savings_target)
+values ('main', 0, 0, 0)
 on conflict (id) do nothing;
 
 create table if not exists budgets (

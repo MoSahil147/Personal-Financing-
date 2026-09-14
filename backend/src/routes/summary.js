@@ -28,18 +28,41 @@ router.get('/monthly', async (req, res) => {
 
   const byCategory = {};
   const byClassification = { need: 0, want: 0, luxury: 0 };
+  const expenseByMethod = { debit: 0, credit: 0 };
   for (const e of entries.filter((e) => e.type === 'expense')) {
     byCategory[e.category] = (byCategory[e.category] || 0) + Number(e.amount);
     if (e.classification && byClassification[e.classification] !== undefined) {
       byClassification[e.classification] += Number(e.amount);
     }
+    expenseByMethod[e.payment_method === 'credit' ? 'credit' : 'debit'] += Number(e.amount);
   }
 
   const { data: budgets, error: budgetErr } = await supabase.from('budgets').select('*');
   if (budgetErr) return res.status(500).json({ error: budgetErr.message });
 
+  const { data: settings, error: settingsErr } = await supabase
+    .from('settings')
+    .select('monthly_savings_target')
+    .eq('id', 'main')
+    .single();
+  if (settingsErr) return res.status(500).json({ error: settingsErr.message });
+
+  const savings = income - expense;
+  const savingsTarget = Number(settings.monthly_savings_target) || 0;
+  const savingsPercent = savingsTarget > 0 ? Math.round((savings / savingsTarget) * 100) : null;
+
+  // A budget's category can be a single name ("Groceries") or a comma-separated
+  // group ("Groceries, Shopping, Clothing") that shares one combined cap.
   const budgetStatus = budgets.map((b) => {
-    const spent = b.category === 'overall' ? expense : byCategory[b.category] || 0;
+    let spent;
+    if (b.category === 'overall') {
+      spent = expense;
+    } else {
+      const members = b.category.split(',').map((c) => c.trim().toLowerCase());
+      spent = Object.entries(byCategory)
+        .filter(([cat]) => members.includes(cat.toLowerCase()))
+        .reduce((s, [, total]) => s + total, 0);
+    }
     const percent = Math.round((spent / Number(b.limit_amount)) * 100);
     return { category: b.category, limit: Number(b.limit_amount), spent, percent };
   });
@@ -56,10 +79,28 @@ router.get('/monthly', async (req, res) => {
           : `You're at ${b.percent}% of your ${b.category} budget.`,
     }));
 
+  const today = new Date();
+  const isCurrentMonth = today.getFullYear() === year && today.getMonth() + 1 === month;
+  if (isCurrentMonth && savingsTarget > 0) {
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const expectedPaceAmount = (savingsTarget / daysInMonth) * today.getDate();
+    if (savings < expectedPaceAmount - savingsTarget * 0.1) {
+      alerts.push({
+        category: 'Savings goal',
+        percent: savingsPercent,
+        level: 'near',
+        message: `You're behind pace on your ${savingsTarget.toFixed(2)} savings goal - saved ${savings.toFixed(2)} so far.`,
+      });
+    }
+  }
+
   res.json({
     income,
     expense,
-    savings: income - expense,
+    expenseByMethod,
+    savings,
+    savingsTarget,
+    savingsPercent,
     byCategory: Object.entries(byCategory).map(([category, total]) => ({ category, total })),
     byClassification,
     budgetStatus,

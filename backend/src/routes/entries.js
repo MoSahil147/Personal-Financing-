@@ -1,6 +1,5 @@
 const express = require('express');
 const supabase = require('../services/supabase');
-const { parseEntry } = require('../services/groq');
 
 const router = express.Router();
 
@@ -22,22 +21,6 @@ async function applyBalanceEffect({ type, amount, payment_method }, sign) {
   const { error: updErr } = await supabase.from('settings').update(updates).eq('id', 'main');
   if (updErr) throw new Error(updErr.message);
 }
-
-// Parse freeform text into a structured suggestion. Does NOT save anything.
-router.post('/parse', async (req, res) => {
-  const { text } = req.body || {};
-  if (!text || !text.trim()) return res.status(400).json({ error: 'text is required' });
-
-  try {
-    const { data: existing } = await supabase.from('entries').select('category').limit(200);
-    const knownCategories = [...new Set((existing || []).map((e) => e.category))];
-
-    const suggestion = await parseEntry(text, knownCategories);
-    res.json({ suggestion, raw_input: text });
-  } catch (err) {
-    res.status(502).json({ error: err.message });
-  }
-});
 
 // Save a confirmed entry (after the user reviews/edits the suggestion).
 router.post('/', async (req, res) => {
