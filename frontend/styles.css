@@ -77,6 +77,16 @@ body {
 
 .card h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 0 0 12px; }
 
+#connection-banner {
+  background: rgba(224, 169, 78, 0.15);
+  color: var(--warn);
+  border: 1px solid rgba(224, 169, 78, 0.3);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
 .balance-row { display: flex; gap: 12px; flex-wrap: wrap; }
 .balance-box {
   flex: 1;
@@ -117,12 +127,25 @@ body {
   gap: 10px;
   padding: 8px 0;
   border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
 }
+#reminders-list li > span:nth-child(2) { flex: 1; min-width: 0; }
 #reminders-list li:last-child { border-bottom: none; }
 #reminders-list input[type="checkbox"] { width: 18px; height: 18px; }
-.reminder-due { color: var(--muted); font-size: 12px; margin-left: auto; }
+.reminder-due { color: var(--muted); font-size: 12px; margin-left: 8px; }
 
-#reminder-form { display: flex; gap: 8px; margin-top: 12px; }
+.star-picker { display: inline-flex; gap: 2px; }
+.star-picker .star {
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  color: #ffffff;
+  user-select: none;
+}
+.star-picker .star.filled { color: #ffd24d; }
+#reminders-list .star-picker .star { font-size: 15px; }
+
+#reminder-form { display: flex; align-items: center; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
 #reminder-form input {
   flex: 1;
   padding: 8px 10px;

@@ -10,6 +10,8 @@
 --   alter table entries drop constraint if exists entries_classification_check;
 --   alter table entries add constraint entries_classification_check
 --     check (classification in ('need', 'want', 'luxury', 'savings', 'investment'));
+--   -- priority stars on reminders:
+--   alter table reminders add column if not exists priority smallint not null default 3 check (priority between 1 and 5);
 
 create table if not exists entries (
   id uuid primary key default gen_random_uuid(),
@@ -49,6 +51,7 @@ create table if not exists reminders (
   text text not null,
   done boolean not null default false,
   due_date date,
+  priority smallint not null default 3 check (priority between 1 and 5), -- 5 = most important
   created_at timestamptz not null default now()
 );
 

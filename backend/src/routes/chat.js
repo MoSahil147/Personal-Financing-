@@ -4,6 +4,12 @@ const { classifyChat } = require('../services/groq');
 
 const router = express.Router();
 
+function clampPriority(value, fallback = 3) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(5, Math.max(1, Math.round(n)));
+}
+
 router.post('/', async (req, res) => {
   const { text } = req.body || {};
   if (!text || !text.trim()) return res.status(400).json({ error: 'text is required' });
@@ -21,7 +27,7 @@ router.post('/', async (req, res) => {
       const reminderText = result.reminder_text || text;
       const { data, error } = await supabase
         .from('reminders')
-        .insert({ text: reminderText, due_date: result.reminder_due_date || null })
+        .insert({ text: reminderText, due_date: result.reminder_due_date || null, priority: clampPriority(result.reminder_priority) })
         .select()
         .single();
       if (error) return res.status(500).json({ error: error.message });

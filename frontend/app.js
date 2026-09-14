@@ -51,6 +51,41 @@ async function api(path, options = {}) {
   return res.json();
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function showConnectionBanner(text) {
+  const el = document.getElementById('connection-banner');
+  el.textContent = text;
+  el.hidden = false;
+}
+
+function hideConnectionBanner() {
+  document.getElementById('connection-banner').hidden = true;
+}
+
+// Render's free tier spins the backend down after inactivity, so the first
+// request after opening/refreshing the page can fail or hang while it wakes
+// up. Retry with backoff instead of silently leaving a section empty.
+async function loadSection(fn, label) {
+  const delays = [3000, 6000, 12000];
+  for (let attempt = 0; attempt <= delays.length; attempt++) {
+    try {
+      await fn();
+      hideConnectionBanner();
+      return;
+    } catch (err) {
+      if (attempt === delays.length) {
+        showConnectionBanner(`Couldn't load ${label} (server may be waking up) - pull down or refresh to try again.`);
+        return;
+      }
+      showConnectionBanner(`Waking up the server, retrying ${label}...`);
+      await sleep(delays[attempt]);
+    }
+  }
+}
+
 function showLogin() {
   document.getElementById('login-screen').hidden = false;
   document.getElementById('app').hidden = true;
@@ -126,6 +161,40 @@ function setView(view) {
 
 // ---------- reminders ----------
 
+// Renders 5 hoverable stars into `container`. Starts blank/white up to
+// `initial`, fills gold on hover preview, and calls onSelect(value) on click.
+function buildStarPicker(container, initial, onSelect) {
+  container.innerHTML = '';
+  let selected = initial;
+
+  const paint = (upTo) => {
+    stars.forEach((star, i) => {
+      star.textContent = i < upTo ? '★' : '☆';
+      star.classList.toggle('filled', i < upTo);
+    });
+  };
+
+  const stars = [1, 2, 3, 4, 5].map((value) => {
+    const star = document.createElement('span');
+    star.className = 'star';
+    star.dataset.value = value;
+    star.addEventListener('mouseenter', () => paint(value));
+    star.addEventListener('mouseleave', () => paint(selected));
+    star.addEventListener('click', () => {
+      selected = value;
+      paint(selected);
+      onSelect(value);
+    });
+    container.appendChild(star);
+    return star;
+  });
+
+  paint(selected);
+  return { get value() { return selected; } };
+}
+
+let newReminderStars = null;
+
 async function refreshReminders() {
   const reminders = await api('/api/reminders');
   const list = document.getElementById('reminders-list');
@@ -133,8 +202,13 @@ async function refreshReminders() {
   for (const r of reminders) {
     const li = document.createElement('li');
     const due = r.due_date ? `<span class="reminder-due">${r.due_date}</span>` : '';
-    li.innerHTML = `<input type="checkbox" data-id="${r.id}" /> <span>${escapeHtml(r.text)}</span> ${due}`;
+    li.innerHTML = `<input type="checkbox" data-id="${r.id}" /> <span>${escapeHtml(r.text)}</span> ${due} <span class="star-picker" data-id="${r.id}"></span>`;
     list.appendChild(li);
+
+    const starContainer = li.querySelector('.star-picker');
+    buildStarPicker(starContainer, r.priority || 3, async (value) => {
+      await api(`/api/reminders/${r.id}/priority`, { method: 'PATCH', body: JSON.stringify({ priority: value }) });
+    });
   }
   list.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
     cb.addEventListener('change', async () => {
@@ -144,13 +218,16 @@ async function refreshReminders() {
   });
 }
 
+newReminderStars = buildStarPicker(document.getElementById('new-reminder-stars'), 3, () => {});
+
 document.getElementById('reminder-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const input = document.getElementById('reminder-text');
   const text = input.value.trim();
   if (!text) return;
-  await api('/api/reminders', { method: 'POST', body: JSON.stringify({ text }) });
+  await api('/api/reminders', { method: 'POST', body: JSON.stringify({ text, priority: newReminderStars.value }) });
   input.value = '';
+  newReminderStars = buildStarPicker(document.getElementById('new-reminder-stars'), 3, () => {});
   refreshReminders();
 });
 
@@ -429,10 +506,10 @@ function escapeHtml(str) {
 
 function initApp() {
   populateSelectors();
-  refreshReminders();
-  refreshBalances();
-  refreshMonthly();
-  refreshLedger();
+  loadSection(refreshReminders, 'reminders');
+  loadSection(refreshBalances, 'balances');
+  loadSection(refreshMonthly, 'monthly summary');
+  loadSection(refreshLedger, 'ledger');
 }
 
 if (getToken()) {

@@ -14,7 +14,7 @@ async function classifyChat(text, { knownCategories = [], activeReminders = [] }
   const system = `You are the message router for a personal finance chat bar. Today's date is ${todayISO()}.
 Classify the user's message into exactly one intent:
 - "log_entry": they're logging money coming in or going out (salary, a purchase, a refund, a repayment, etc).
-- "add_reminder": they want something remembered/tracked as a to-do (e.g. "remind me to pay rent on the 1st", "these are the reminders: pay internet bill", "add a reminder to renew visa").
+- "add_reminder": they want something remembered/tracked as a to-do (e.g. "remind me to pay rent on the 1st", "these are the reminders: pay internet bill", "add a reminder to renew visa"). Infer reminder_priority 1-5 (5 = most important) from urgency/importance language - "urgent"/"important"/"asap"/"critical" -> 4-5, plain/casual mentions -> 3, "whenever"/"low priority"/"not urgent" -> 1-2. Default to 3 if nothing suggests otherwise.
 - "remove_reminder": they want an EXISTING reminder taken off the list (e.g. "remove the rent reminder", "done with the internet bill one", "delete that reminder about visa"). Match it against the ACTIVE REMINDERS list below by meaning and return its id. If nothing matches clearly, use remove_reminder_id: null.
 - "chat": anything else that doesn't fit the above (a question, small talk, unclear input).
 
@@ -36,6 +36,7 @@ Respond with ONLY a JSON object, no prose, matching this exact shape:
   "entry": { "type": "income"|"expense", "amount": number|null, "category": string, "classification": "need"|"want"|"luxury"|"savings"|"investment"|null, "payment_method": "debit"|"credit"|null, "date": "YYYY-MM-DD", "note": string } | null,
   "reminder_text": string | null,
   "reminder_due_date": "YYYY-MM-DD" | null,
+  "reminder_priority": number | null,
   "remove_reminder_id": string | null,
   "reply": string
 }
