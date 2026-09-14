@@ -111,6 +111,18 @@ body {
   font-size: 12px;
 }
 
+.total-capital {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 14px;
+  font-weight: 700;
+}
+.total-capital span:last-child { color: var(--good); font-size: 18px; }
+
 #alerts .alert {
   padding: 10px 12px;
   border-radius: 8px;

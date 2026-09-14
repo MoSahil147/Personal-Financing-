@@ -1,13 +1,8 @@
 const express = require('express');
 const supabase = require('../services/supabase');
+const { getSettings, withdrawCash } = require('../services/balances');
 
 const router = express.Router();
-
-async function getSettings() {
-  const { data, error } = await supabase.from('settings').select('*').eq('id', 'main').single();
-  if (error) throw new Error(error.message);
-  return data;
-}
 
 router.get('/', async (_req, res) => {
   try {
@@ -33,6 +28,39 @@ router.put('/bank-balance', async (req, res) => {
 
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
+});
+
+// Manual correction/seed of the cash-on-hand balance (e.g. first-time setup).
+router.put('/cash-balance', async (req, res) => {
+  const { cash_balance } = req.body || {};
+  if (cash_balance === undefined || cash_balance === null || isNaN(Number(cash_balance))) {
+    return res.status(400).json({ error: 'cash_balance must be a number' });
+  }
+
+  const { data, error } = await supabase
+    .from('settings')
+    .update({ cash_balance: Number(cash_balance) })
+    .eq('id', 'main')
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+// Withdraw cash from the bank (e.g. an ATM withdrawal): moves money from
+// bank_balance to cash_balance. Not income or spending - a pure transfer.
+router.post('/withdraw-cash', async (req, res) => {
+  const { amount } = req.body || {};
+  const n = Number(amount);
+  if (!n || n <= 0) return res.status(400).json({ error: 'amount must be a positive number' });
+
+  try {
+    const data = await withdrawCash(n);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Set/update your monthly savings goal (e.g. 5000).

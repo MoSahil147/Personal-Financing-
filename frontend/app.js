@@ -14,6 +14,15 @@ function colorForLabel(label) {
   return CHART_COLORS[hash % CHART_COLORS.length];
 }
 
+// Must match CATEGORIES in backend/src/services/groq.js so the categories the
+// LLM assigns and the ones pickable here are always the same closed set,
+// which keeps monthly and yearly views consistent.
+const CATEGORIES = [
+  'Groceries', 'Shopping', 'Dining', 'Transport', 'Fuel', 'Utilities', 'Rent',
+  'Entertainment', 'Subscriptions', 'Health', 'Travel', 'Education', 'Gifts',
+  'Repayment', 'Refund', 'Salary', 'Investment', 'Credit Card Payment', 'Other',
+];
+
 const state = {
   month: new Date().getMonth() + 1,
   year: new Date().getFullYear(),
@@ -29,28 +38,6 @@ function getToken() { return localStorage.getItem(TOKEN_KEY); }
 function setToken(t) { localStorage.setItem(TOKEN_KEY, t); }
 function clearToken() { localStorage.removeItem(TOKEN_KEY); }
 
-async function api(path, options = {}) {
-  const res = await fetch(`${API}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${getToken()}`,
-      ...(options.headers || {}),
-    },
-  });
-  if (res.status === 401) {
-    clearToken();
-    showLogin();
-    throw new Error('Session expired, please log in again');
-  }
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `Request failed (${res.status})`);
-  }
-  if (res.status === 204) return null;
-  return res.json();
-}
-
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -65,24 +52,62 @@ function hideConnectionBanner() {
   document.getElementById('connection-banner').hidden = true;
 }
 
-// Render's free tier spins the backend down after inactivity, so the first
-// request after opening/refreshing the page can fail or hang while it wakes
-// up. Retry with backoff instead of silently leaving a section empty.
-async function loadSection(fn, label) {
-  const delays = [3000, 6000, 12000];
-  for (let attempt = 0; attempt <= delays.length; attempt++) {
+// Render's free tier spins the backend down after inactivity, so ANY request
+// (loading data, adding a reminder, logging an entry, ...) can hit a network
+// error or a 502/503/504 gateway error for a bit while it wakes up. Retry
+// every call here instead of only the initial page load, so actions taken
+// during a cold start don't just fail silently.
+const RETRY_DELAYS_MS = [2000, 4000, 8000, 8000];
+
+async function api(path, options = {}) {
+  for (let attempt = 0; ; attempt++) {
+    let res;
     try {
-      await fn();
-      hideConnectionBanner();
-      return;
+      res = await fetch(`${API}${path}`, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${getToken()}`,
+          ...(options.headers || {}),
+        },
+      });
     } catch (err) {
-      if (attempt === delays.length) {
-        showConnectionBanner(`Couldn't load ${label} (server may be waking up) - pull down or refresh to try again.`);
-        return;
+      if (attempt < RETRY_DELAYS_MS.length) {
+        showConnectionBanner('Waking up the server, please wait...');
+        await sleep(RETRY_DELAYS_MS[attempt]);
+        continue;
       }
-      showConnectionBanner(`Waking up the server, retrying ${label}...`);
-      await sleep(delays[attempt]);
+      throw new Error('Could not reach the server. Check your connection and try again.');
     }
+
+    if (res.status === 401) {
+      clearToken();
+      showLogin();
+      throw new Error('Session expired, please log in again');
+    }
+
+    if ([502, 503, 504].includes(res.status) && attempt < RETRY_DELAYS_MS.length) {
+      showConnectionBanner('Waking up the server, please wait...');
+      await sleep(RETRY_DELAYS_MS[attempt]);
+      continue;
+    }
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error || `Request failed (${res.status})`);
+    }
+
+    hideConnectionBanner();
+    if (res.status === 204) return null;
+    return res.json();
+  }
+}
+
+async function loadSection(fn, label) {
+  try {
+    await fn();
+  } catch (err) {
+    showConnectionBanner(`Couldn't load ${label}: ${err.message}`);
   }
 }
 
@@ -108,21 +133,41 @@ async function login() {
   const password = document.getElementById('login-password').value;
   const errorEl = document.getElementById('login-error');
   errorEl.textContent = '';
-  try {
-    const res = await fetch(`${API}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password }),
-    });
-    if (!res.ok) {
-      errorEl.textContent = 'Wrong password';
+
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const res = await fetch(`${API}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+      if (res.status === 401) {
+        errorEl.textContent = 'Wrong password';
+        return;
+      }
+      if ([502, 503, 504].includes(res.status) && attempt < RETRY_DELAYS_MS.length) {
+        errorEl.textContent = 'Waking up the server, please wait...';
+        await sleep(RETRY_DELAYS_MS[attempt]);
+        continue;
+      }
+      if (!res.ok) {
+        errorEl.textContent = 'Wrong password';
+        return;
+      }
+      const { token } = await res.json();
+      setToken(token);
+      errorEl.textContent = '';
+      showApp();
+      return;
+    } catch {
+      if (attempt < RETRY_DELAYS_MS.length) {
+        errorEl.textContent = 'Waking up the server, please wait...';
+        await sleep(RETRY_DELAYS_MS[attempt]);
+        continue;
+      }
+      errorEl.textContent = 'Could not reach server. Check your connection and try again.';
       return;
     }
-    const { token } = await res.json();
-    setToken(token);
-    showApp();
-  } catch {
-    errorEl.textContent = 'Could not reach server';
   }
 }
 
@@ -207,13 +252,22 @@ async function refreshReminders() {
 
     const starContainer = li.querySelector('.star-picker');
     buildStarPicker(starContainer, r.priority || 3, async (value) => {
-      await api(`/api/reminders/${r.id}/priority`, { method: 'PATCH', body: JSON.stringify({ priority: value }) });
+      try {
+        await api(`/api/reminders/${r.id}/priority`, { method: 'PATCH', body: JSON.stringify({ priority: value }) });
+      } catch (err) {
+        alert(err.message);
+      }
     });
   }
   list.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
     cb.addEventListener('change', async () => {
-      await api(`/api/reminders/${cb.dataset.id}/done`, { method: 'PATCH' });
-      refreshReminders();
+      try {
+        await api(`/api/reminders/${cb.dataset.id}/done`, { method: 'PATCH' });
+        refreshReminders();
+      } catch (err) {
+        cb.checked = false;
+        alert(err.message);
+      }
     });
   });
 }
@@ -225,19 +279,27 @@ document.getElementById('reminder-form').addEventListener('submit', async (e) =>
   const input = document.getElementById('reminder-text');
   const text = input.value.trim();
   if (!text) return;
-  await api('/api/reminders', { method: 'POST', body: JSON.stringify({ text, priority: newReminderStars.value }) });
-  input.value = '';
-  newReminderStars = buildStarPicker(document.getElementById('new-reminder-stars'), 3, () => {});
-  refreshReminders();
+  try {
+    await api('/api/reminders', { method: 'POST', body: JSON.stringify({ text, priority: newReminderStars.value }) });
+    input.value = '';
+    newReminderStars = buildStarPicker(document.getElementById('new-reminder-stars'), 3, () => {});
+    refreshReminders();
+  } catch (err) {
+    alert(err.message);
+  }
 });
 
 // ---------- balances ----------
 
 async function refreshBalances() {
   const settings = await api('/api/settings');
-  document.getElementById('bank-balance').textContent = `${Number(settings.bank_balance).toFixed(2)} AED`;
+  const bank = Number(settings.bank_balance);
+  const cash = Number(settings.cash_balance);
+  document.getElementById('bank-balance').textContent = `${bank.toFixed(2)} AED`;
+  document.getElementById('cash-balance').textContent = `${cash.toFixed(2)} AED`;
   document.getElementById('credit-outstanding').textContent = `${Number(settings.credit_outstanding).toFixed(2)} AED`;
   document.getElementById('settle-credit-btn').hidden = Number(settings.credit_outstanding) <= 0;
+  document.getElementById('total-capital').textContent = `${(bank + cash).toFixed(2)} AED`;
 }
 
 document.getElementById('settle-credit-btn').addEventListener('click', async () => {
@@ -417,6 +479,11 @@ async function sendChat() {
 
     if (result.intent === 'log_entry') {
       openConfirmModal(result.suggestion, result.raw_input);
+    } else if (result.intent === 'cash_withdrawal') {
+      if (confirm(`Withdraw ${Number(result.amount).toFixed(2)} from the bank to cash?`)) {
+        await api('/api/settings/withdraw-cash', { method: 'POST', body: JSON.stringify({ amount: result.amount }) });
+        refreshBalances();
+      }
     } else if (result.intent === 'add_reminder') {
       refreshReminders();
     } else if (result.intent === 'remove_reminder') {
@@ -433,24 +500,38 @@ async function sendChat() {
   }
 }
 
-function updatePaymentFieldVisibility() {
+const EXPENSE_METHODS = [
+  { value: 'debit', label: 'Debit (bank account)' },
+  { value: 'credit', label: 'Credit card' },
+  { value: 'cash', label: 'Cash' },
+];
+const INCOME_METHODS = [
+  { value: '', label: 'Bank' },
+  { value: 'cash', label: 'Cash' },
+];
+
+function updatePaymentMethodOptions() {
   const isExpense = document.getElementById('confirm-type').value === 'expense';
-  document.getElementById('confirm-payment-label').hidden = !isExpense;
-  document.getElementById('confirm-payment-method').hidden = !isExpense;
+  const select = document.getElementById('confirm-payment-method');
+  const methods = isExpense ? EXPENSE_METHODS : INCOME_METHODS;
+  select.innerHTML = methods.map((m) => `<option value="${m.value}">${m.label}</option>`).join('');
 }
 
-document.getElementById('confirm-type').addEventListener('change', updatePaymentFieldVisibility);
+document.getElementById('confirm-type').addEventListener('change', updatePaymentMethodOptions);
+
+const categorySelect = document.getElementById('confirm-category');
+categorySelect.innerHTML = CATEGORIES.map((c) => `<option value="${c}">${c}</option>`).join('');
 
 function openConfirmModal(suggestion, raw_input) {
   state.pendingSuggestion = { ...suggestion, raw_input };
   document.getElementById('confirm-type').value = suggestion.type || 'expense';
   document.getElementById('confirm-amount').value = suggestion.amount ?? '';
-  document.getElementById('confirm-category').value = suggestion.category || '';
+  categorySelect.value = CATEGORIES.includes(suggestion.category) ? suggestion.category : 'Other';
   document.getElementById('confirm-classification').value = suggestion.classification || '';
-  document.getElementById('confirm-payment-method').value = suggestion.payment_method || 'debit';
+  updatePaymentMethodOptions();
+  document.getElementById('confirm-payment-method').value = suggestion.payment_method || (suggestion.type === 'expense' ? 'debit' : '');
   document.getElementById('confirm-date').value = suggestion.date || new Date().toISOString().slice(0, 10);
   document.getElementById('confirm-note').value = suggestion.note || '';
-  updatePaymentFieldVisibility();
   document.getElementById('confirm-modal').hidden = false;
 }
 
@@ -466,7 +547,7 @@ document.getElementById('confirm-save').addEventListener('click', async () => {
     amount: Number(document.getElementById('confirm-amount').value),
     category: document.getElementById('confirm-category').value.trim(),
     classification: document.getElementById('confirm-classification').value || null,
-    payment_method: type === 'expense' ? document.getElementById('confirm-payment-method').value : null,
+    payment_method: document.getElementById('confirm-payment-method').value || null,
     entry_date: document.getElementById('confirm-date').value,
     note: document.getElementById('confirm-note').value.trim(),
     raw_input: state.pendingSuggestion?.raw_input || null,

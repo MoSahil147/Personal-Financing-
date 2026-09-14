@@ -12,6 +12,13 @@
 --     check (classification in ('need', 'want', 'luxury', 'savings', 'investment'));
 --   -- priority stars on reminders:
 --   alter table reminders add column if not exists priority smallint not null default 3 check (priority between 1 and 5);
+--   -- cash tracking (cash_balance + 'cash' as a payment_method):
+--   alter table settings add column if not exists cash_balance numeric(12,2) not null default 0;
+--   alter table entries drop constraint if exists entries_payment_method_check;
+--   alter table entries add constraint entries_payment_method_check
+--     check (payment_method in ('debit', 'credit', 'cash'));
+--   -- then privately seed your real cash-on-hand (never commit the number):
+--   update settings set cash_balance = <your cash> where id = 'main';
 
 create table if not exists entries (
   id uuid primary key default gen_random_uuid(),
@@ -20,23 +27,24 @@ create table if not exists entries (
   amount numeric(12,2) not null check (amount > 0),
   category text not null,
   classification text check (classification in ('need', 'want', 'luxury', 'savings', 'investment')),
-  payment_method text check (payment_method in ('debit', 'credit')), -- expenses only; income always hits the bank directly
+  payment_method text check (payment_method in ('debit', 'credit', 'cash')), -- 'cash' applies to income too (someone paid you cash); null/'debit' income means it hit the bank directly
   note text,
   raw_input text,
   created_at timestamptz not null default now()
 );
 
--- Single row holding live balances. Seed bank_balance with your real starting
--- balance after creating this table, e.g.:
---   update settings set bank_balance = <your balance> where id = 'main';
+-- Single row holding live balances. Seed bank_balance and cash_balance with
+-- your real starting numbers after creating this table, e.g.:
+--   update settings set bank_balance = <your balance>, cash_balance = <your cash> where id = 'main';
 create table if not exists settings (
   id text primary key default 'main',
   bank_balance numeric(12,2) not null default 0,
   credit_outstanding numeric(12,2) not null default 0,
-  monthly_savings_target numeric(12,2) not null default 0
+  monthly_savings_target numeric(12,2) not null default 0,
+  cash_balance numeric(12,2) not null default 0
 );
-insert into settings (id, bank_balance, credit_outstanding, monthly_savings_target)
-values ('main', 0, 0, 0)
+insert into settings (id, bank_balance, credit_outstanding, monthly_savings_target, cash_balance)
+values ('main', 0, 0, 0, 0)
 on conflict (id) do nothing;
 
 create table if not exists budgets (

@@ -1,26 +1,8 @@
 const express = require('express');
 const supabase = require('../services/supabase');
+const { applyEntryBalanceEffect } = require('../services/balances');
 
 const router = express.Router();
-
-// Positive delta = money added to the bank, negative = removed. Credit-card
-// expenses never touch the bank balance until they're settled.
-async function applyBalanceEffect({ type, amount, payment_method }, sign) {
-  const { data: settings, error: getErr } = await supabase.from('settings').select('*').eq('id', 'main').single();
-  if (getErr) throw new Error(getErr.message);
-
-  const updates = {};
-  if (type === 'income') {
-    updates.bank_balance = Number(settings.bank_balance) + sign * Number(amount);
-  } else if (payment_method === 'credit') {
-    updates.credit_outstanding = Number(settings.credit_outstanding) + sign * Number(amount);
-  } else {
-    updates.bank_balance = Number(settings.bank_balance) - sign * Number(amount);
-  }
-
-  const { error: updErr } = await supabase.from('settings').update(updates).eq('id', 'main');
-  if (updErr) throw new Error(updErr.message);
-}
 
 // Save a confirmed entry (after the user reviews/edits the suggestion).
 router.post('/', async (req, res) => {
@@ -32,9 +14,12 @@ router.post('/', async (req, res) => {
   if (!['income', 'expense'].includes(type)) {
     return res.status(400).json({ error: 'type must be income or expense' });
   }
-  const method = type === 'expense' ? payment_method || 'debit' : null;
-  if (type === 'expense' && !['debit', 'credit'].includes(method)) {
-    return res.status(400).json({ error: 'payment_method must be debit or credit' });
+  const method = payment_method === 'cash' ? 'cash' : type === 'expense' ? payment_method || 'debit' : null;
+  if (type === 'expense' && !['debit', 'credit', 'cash'].includes(method)) {
+    return res.status(400).json({ error: 'payment_method must be debit, credit, or cash' });
+  }
+  if (type === 'income' && method !== null && method !== 'cash') {
+    return res.status(400).json({ error: 'income payment_method must be cash or omitted (bank)' });
   }
 
   const { data, error } = await supabase
@@ -55,7 +40,7 @@ router.post('/', async (req, res) => {
   if (error) return res.status(500).json({ error: error.message });
 
   try {
-    await applyBalanceEffect(data, 1);
+    await applyEntryBalanceEffect(data, 1);
   } catch (err) {
     // Entry is saved but the balance update failed - surface it so it isn't silently wrong.
     return res.status(207).json({ ...data, balance_warning: err.message });
@@ -94,7 +79,7 @@ router.delete('/:id', async (req, res) => {
   if (error) return res.status(500).json({ error: error.message });
 
   try {
-    await applyBalanceEffect(existing, -1);
+    await applyEntryBalanceEffect(existing, -1);
   } catch (err) {
     return res.status(207).json({ deleted: true, balance_warning: err.message });
   }

@@ -25,11 +25,19 @@
           <div class="label">Bank Balance</div>
           <div class="value" id="bank-balance">-</div>
         </div>
+        <div class="balance-box">
+          <div class="label">Cash on Hand</div>
+          <div class="value" id="cash-balance">-</div>
+        </div>
         <div class="balance-box credit">
           <div class="label">Owed on Credit Card</div>
           <div class="value" id="credit-outstanding">-</div>
           <button id="settle-credit-btn" hidden>Pay off now</button>
         </div>
+      </div>
+      <div class="total-capital">
+        <span>Total Capital (bank + cash)</span>
+        <span id="total-capital">-</span>
       </div>
     </div>
 
@@ -117,7 +125,7 @@
       <label>Amount</label>
       <input type="number" id="confirm-amount" step="0.01" />
       <label>Category</label>
-      <input type="text" id="confirm-category" />
+      <select id="confirm-category"></select>
       <label>Classification</label>
       <select id="confirm-classification">
         <option value="">-</option>
@@ -126,11 +134,8 @@
         <option value="luxury">Luxury</option>
         <option value="savings">Savings</option>
       </select>
-      <label id="confirm-payment-label">Paid with</label>
-      <select id="confirm-payment-method">
-        <option value="debit">Debit (bank account)</option>
-        <option value="credit">Credit card</option>
-      </select>
+      <label id="confirm-payment-label">Method</label>
+      <select id="confirm-payment-method"></select>
       <label>Date</label>
       <input type="date" id="confirm-date" />
       <label>Note</label>

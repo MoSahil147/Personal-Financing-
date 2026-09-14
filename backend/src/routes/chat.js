@@ -15,13 +15,9 @@ router.post('/', async (req, res) => {
   if (!text || !text.trim()) return res.status(400).json({ error: 'text is required' });
 
   try {
-    const [{ data: existing }, { data: activeReminders }] = await Promise.all([
-      supabase.from('entries').select('category').limit(200),
-      supabase.from('reminders').select('id, text').eq('done', false),
-    ]);
-    const knownCategories = [...new Set((existing || []).map((e) => e.category))];
+    const { data: activeReminders } = await supabase.from('reminders').select('id, text').eq('done', false);
 
-    const result = await classifyChat(text, { knownCategories, activeReminders: activeReminders || [] });
+    const result = await classifyChat(text, { activeReminders: activeReminders || [] });
 
     if (result.intent === 'add_reminder') {
       const reminderText = result.reminder_text || text;
@@ -50,6 +46,13 @@ router.post('/', async (req, res) => {
 
     if (result.intent === 'log_entry') {
       return res.json({ intent: 'log_entry', suggestion: result.entry, raw_input: text });
+    }
+
+    if (result.intent === 'cash_withdrawal') {
+      if (!result.withdrawal_amount) {
+        return res.json({ intent: 'chat', reply: "Couldn't tell how much you withdrew - try again with an amount." });
+      }
+      return res.json({ intent: 'cash_withdrawal', amount: result.withdrawal_amount });
     }
 
     res.json({ intent: 'chat', reply: result.reply || "Not sure what you meant - try logging an amount or adding/removing a reminder." });
