@@ -185,10 +185,16 @@ function populateSelectors() {
   yearSel.innerHTML = years.map((y) => `<option value="${y}">${y}</option>`).join('');
   yearSel.value = state.year;
 
-  monthSel.addEventListener('change', () => { state.month = Number(monthSel.value); refreshMonthly(); refreshLedger(); });
+  monthSel.addEventListener('change', () => {
+    state.month = Number(monthSel.value);
+    loadSection(refreshMonthly, 'monthly summary');
+    loadSection(refreshLedger, 'ledger');
+  });
   yearSel.addEventListener('change', () => {
     state.year = Number(yearSel.value);
-    refreshMonthly(); refreshLedger(); refreshYearly();
+    loadSection(refreshMonthly, 'monthly summary');
+    loadSection(refreshLedger, 'ledger');
+    if (state.view === 'yearly') loadSection(refreshYearly, 'yearly summary');
   });
 }
 
@@ -201,7 +207,7 @@ function setView(view) {
   document.getElementById('tab-yearly').classList.toggle('active', view === 'yearly');
   document.getElementById('monthly-view').hidden = view !== 'monthly';
   document.getElementById('yearly-view').hidden = view !== 'yearly';
-  if (view === 'yearly') refreshYearly();
+  if (view === 'yearly') loadSection(refreshYearly, 'yearly summary');
 }
 
 // ---------- reminders ----------
