@@ -1,6 +1,15 @@
 const API = window.API_BASE_URL;
 const TOKEN_KEY = 'finance_token';
 
+// toISOString() normalizes to UTC, which can report the wrong calendar date
+// near midnight in the device's actual timezone - use local date parts instead.
+function todayISO() {
+  const d = new Date();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
 // Fixed palette so each category keeps the same color across refreshes/months
 // instead of Chart.js's default set, which repeats after a handful of slices.
 const CHART_COLORS = [
@@ -411,6 +420,17 @@ function renderPieChart(byCategory) {
 
 async function refreshYearly() {
   const summary = await api(`/api/summary/yearly?year=${state.year}`);
+
+  document.getElementById('year-stat-income').textContent = summary.income.toFixed(2);
+  document.getElementById('year-stat-expense').textContent = summary.expense.toFixed(2);
+  const yearSavingsEl = document.getElementById('year-stat-savings');
+  yearSavingsEl.textContent = summary.savings.toFixed(2);
+  yearSavingsEl.className = 'value ' + (summary.savings >= 0 ? 'good' : 'bad');
+
+  document.getElementById('year-eb-total').textContent = summary.expense.toFixed(2);
+  document.getElementById('year-eb-credit').textContent = summary.expenseByMethod.credit.toFixed(2);
+  document.getElementById('year-eb-debit').textContent = `-${summary.expenseByMethod.debit.toFixed(2)}`;
+
   document.getElementById('invested-year-tab').textContent = summary.investedThisYear.toFixed(2);
 
   const ctx = document.getElementById('yearly-chart');
@@ -537,7 +557,7 @@ function openConfirmModal(suggestion, raw_input) {
   document.getElementById('confirm-classification').value = suggestion.classification || '';
   updatePaymentMethodOptions();
   document.getElementById('confirm-payment-method').value = suggestion.payment_method || (suggestion.type === 'expense' ? 'debit' : '');
-  document.getElementById('confirm-date').value = suggestion.date || new Date().toISOString().slice(0, 10);
+  document.getElementById('confirm-date').value = suggestion.date || todayISO();
   document.getElementById('confirm-note').value = suggestion.note || '';
   document.getElementById('confirm-modal').hidden = false;
 }

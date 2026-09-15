@@ -136,17 +136,25 @@ router.get('/yearly', async (req, res) => {
 
   const months = Array.from({ length: 12 }, (_, i) => ({ month: i + 1, income: 0, expense: 0, invested: 0 }));
   const byCategory = {};
+  const expenseByMethod = { debit: 0, credit: 0 };
   let investedThisYear = 0;
+  let income = 0;
+  let expense = 0;
 
   for (const e of entries) {
     const m = Number(e.entry_date.slice(5, 7)) - 1;
-    if (e.type === 'income') months[m].income += Number(e.amount);
-    else {
-      months[m].expense += Number(e.amount);
-      byCategory[e.category] = (byCategory[e.category] || 0) + Number(e.amount);
+    const amount = Number(e.amount);
+    if (e.type === 'income') {
+      months[m].income += amount;
+      income += amount;
+    } else {
+      months[m].expense += amount;
+      expense += amount;
+      byCategory[e.category] = (byCategory[e.category] || 0) + amount;
+      expenseByMethod[e.payment_method === 'credit' ? 'credit' : 'debit'] += amount;
       if (e.classification === 'investment') {
-        months[m].invested += Number(e.amount);
-        investedThisYear += Number(e.amount);
+        months[m].invested += amount;
+        investedThisYear += amount;
       }
     }
   }
@@ -154,6 +162,10 @@ router.get('/yearly', async (req, res) => {
   const withSavings = months.map((m) => ({ ...m, savings: m.income - m.expense }));
 
   res.json({
+    income,
+    expense,
+    savings: income - expense,
+    expenseByMethod,
     months: withSavings,
     investedThisYear,
     byCategory: Object.entries(byCategory).map(([category, total]) => ({ category, total })),

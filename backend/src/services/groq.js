@@ -1,3 +1,5 @@
+const { todayISO } = require('./date');
+
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
 // Fixed, closed category list - every entry (chat-parsed or manually edited)
@@ -8,10 +10,6 @@ const CATEGORIES = [
   'Entertainment', 'Subscriptions', 'Health', 'Travel', 'Education', 'Gifts',
   'Repayment', 'Refund', 'Salary', 'Investment', 'Credit Card Payment', 'Other',
 ];
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
 
 // Classifies a chat message into one of three things this app understands:
 // logging a transaction, adding a reminder, or removing an existing one.

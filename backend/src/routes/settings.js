@@ -1,6 +1,7 @@
 const express = require('express');
 const supabase = require('../services/supabase');
 const { getSettings, withdrawCash } = require('../services/balances');
+const { todayISO } = require('../services/date');
 
 const router = express.Router();
 
@@ -108,7 +109,7 @@ router.post('/settle-credit-card', async (req, res) => {
     const amount = Number(settings.credit_outstanding);
     if (amount <= 0) return res.status(400).json({ error: 'Nothing owed on credit card' });
 
-    const entry_date = req.body?.entry_date || new Date().toISOString().slice(0, 10);
+    const entry_date = req.body?.entry_date || todayISO();
 
     const { error: insertErr } = await supabase.from('entries').insert({
       entry_date,
