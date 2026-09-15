@@ -11,10 +11,21 @@ function todayISO() {
 }
 
 // Fixed palette so each category keeps the same color across refreshes/months
-// instead of Chart.js's default set, which repeats after a handful of slices.
+// instead of Chart.js's default set. Each entry is a genuinely distinct hue
+// (based on the colorblind-safe Okabe-Ito set) rather than lighter/darker
+// shades of the same handful of colors, so categories stay easy to tell apart
+// even with many slices on one chart.
 const CHART_COLORS = [
-  '#4f8dfd', '#4fbf7a', '#ef5a5a', '#e0a94e', '#a78bfa',
-  '#38bdf8', '#fb7185', '#34d399', '#f59e0b', '#c084fc',
+  '#e69f00', // orange
+  '#56b4e9', // sky blue
+  '#009e73', // teal green
+  '#d55e00', // vermillion
+  '#cc79a7', // pink/mauve
+  '#0072b2', // blue
+  '#f0e442', // yellow
+  '#6a3d9a', // purple
+  '#b15928', // brown
+  '#999999', // gray
 ];
 
 function colorForLabel(label) {
