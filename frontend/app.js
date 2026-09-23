@@ -28,7 +28,30 @@ const CHART_COLORS = [
   '#999999', // gray
 ];
 
+// Every expense category gets its own fixed color so no two share one in the
+// pie/bar charts (hashing the name alone gave Investment, Groceries, Rent and
+// Gifts the same gray). Anything not listed falls back to the hash below.
+const CATEGORY_COLORS = {
+  Rent: '#0072b2',                  // blue
+  Groceries: '#009e73',             // teal green
+  Dining: '#e69f00',                // orange
+  Transport: '#6a3d9a',             // purple
+  Shopping: '#cc79a7',              // pink
+  Investment: '#f0e442',            // yellow
+  Entertainment: '#d55e00',         // vermillion
+  Travel: '#56b4e9',                // sky blue
+  Health: '#b15928',                // brown
+  Subscriptions: '#a6d854',         // lime
+  Utilities: '#bc80bd',             // lavender
+  Education: '#e7298a',             // magenta
+  Fuel: '#d9b38c',                  // sand
+  Gifts: '#fb8072',                 // salmon
+  'Credit Card Payment': '#8b1a1a', // dark red
+  Other: '#999999',                 // gray
+};
+
 function colorForLabel(label) {
+  if (CATEGORY_COLORS[label]) return CATEGORY_COLORS[label];
   let hash = 0;
   for (let i = 0; i < label.length; i++) hash = (hash * 31 + label.charCodeAt(i)) >>> 0;
   return CHART_COLORS[hash % CHART_COLORS.length];
@@ -48,7 +71,6 @@ const state = {
   year: new Date().getFullYear(),
   view: 'monthly',
   pieChart: null,
-  yearlyChart: null,
   yearlyPieChart: null,
   categoryBarChart: null,
   yearlyCategoryBarChart: null,
@@ -636,31 +658,6 @@ async function refreshYearly() {
 
   state.yearlyPieChart = renderPieChart('yearly-pie-chart', state.yearlyPieChart, summary.byCategory);
   state.yearlyCategoryBarChart = renderCategoryBarChart('yearly-category-bar-chart', state.yearlyCategoryBarChart, summary.byCategory);
-
-  const ctx = document.getElementById('yearly-chart');
-  if (state.yearlyChart) state.yearlyChart.destroy();
-
-  const labels = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-
-  state.yearlyChart = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels,
-      datasets: [
-        { label: 'Income', data: summary.months.map((m) => m.income), backgroundColor: '#4fbf7a' },
-        { label: 'Expense', data: summary.months.map((m) => m.expense), backgroundColor: '#ef5a5a' },
-        { label: 'Invested', data: summary.months.map((m) => m.invested), backgroundColor: '#38bdf8' },
-      ],
-    },
-    options: {
-      maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: '#e8eaed', boxWidth: 12, font: { size: 11 } } } },
-      scales: {
-        x: { ticks: { color: '#9aa0ac' } },
-        y: { ticks: { color: '#9aa0ac' } },
-      },
-    },
-  });
 }
 
 // ---------- ledger ----------
