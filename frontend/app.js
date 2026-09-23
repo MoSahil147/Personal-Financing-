@@ -538,7 +538,6 @@ async function refreshMonthly() {
   document.getElementById('eb-debit').textContent = `-${summary.expenseByMethod.debit.toFixed(2)}`;
 
   document.getElementById('invested-month').textContent = summary.investedThisMonth.toFixed(2);
-  document.getElementById('invested-year').textContent = summary.investedThisYear.toFixed(2);
 
   const alertsEl = document.getElementById('alerts');
   alertsEl.innerHTML = '';
