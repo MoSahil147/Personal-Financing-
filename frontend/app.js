@@ -256,7 +256,10 @@ function setView(view) {
   document.getElementById('tab-yearly').classList.toggle('active', view === 'yearly');
   document.getElementById('monthly-view').hidden = view !== 'monthly';
   document.getElementById('yearly-view').hidden = view !== 'yearly';
+  // The month picker only means something on the monthly tab.
+  document.getElementById('month-select').hidden = view === 'yearly';
   if (view === 'yearly') loadSection(refreshYearly, 'yearly summary');
+  loadSection(refreshLedger, 'ledger');
 }
 
 // ---------- reminders ----------
@@ -662,8 +665,17 @@ async function refreshYearly() {
 
 // ---------- ledger ----------
 
+// The ledger follows the tab: the chosen month on Monthly, the whole chosen
+// year on Yearly.
 async function refreshLedger() {
-  const entries = await api(`/api/entries?year=${state.year}&month=${state.month}`);
+  const yearly = state.view === 'yearly';
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  document.getElementById('ledger-period').textContent = yearly
+    ? `· ${state.year}`
+    : `· ${months[state.month - 1]} ${state.year}`;
+  const entries = await api(yearly
+    ? `/api/entries?year=${state.year}`
+    : `/api/entries?year=${state.year}&month=${state.month}`);
   const list = document.getElementById('ledger-list');
   list.innerHTML = '';
   for (const e of entries) {
@@ -686,6 +698,7 @@ async function refreshLedger() {
       refreshMonthly();
       refreshBalances();
       loadSection(refreshBoxes, 'boxes');
+      if (state.view === 'yearly') loadSection(refreshYearly, 'yearly summary');
     });
   });
 }
@@ -883,10 +896,9 @@ document.getElementById('confirm-save').addEventListener('click', async () => {
     loadSection(refreshBoxes, 'boxes');
     const entryMonth = Number(payload.entry_date.slice(5, 7));
     const entryYear = Number(payload.entry_date.slice(0, 4));
-    if (entryMonth === state.month && entryYear === state.year) {
-      refreshMonthly();
-      refreshLedger();
-    }
+    if (entryMonth === state.month && entryYear === state.year) refreshMonthly();
+    if (entryYear === state.year && (state.view === 'yearly' || entryMonth === state.month)) refreshLedger();
+    if (entryYear === state.year && state.view === 'yearly') loadSection(refreshYearly, 'yearly summary');
   } catch (err) {
     alert(err.message);
   }

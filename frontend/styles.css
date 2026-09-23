@@ -254,6 +254,7 @@ canvas { max-width: 100%; }
   font-size: 14px;
 }
 #ledger-list li:last-child { border-bottom: none; }
+.ledger-period { text-transform: none; letter-spacing: 0; color: var(--text); font-weight: 600; margin-left: 4px; }
 .ledger-meta { color: var(--muted); font-size: 12px; }
 .ledger-amount.income { color: var(--good); }
 .ledger-amount.expense { color: var(--danger); }
