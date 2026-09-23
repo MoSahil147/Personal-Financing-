@@ -49,6 +49,7 @@ const state = {
   view: 'monthly',
   pieChart: null,
   yearlyChart: null,
+  yearlyPieChart: null,
   pendingSuggestion: null,
   boxes: [],
   boxSpent: {},
@@ -534,7 +535,7 @@ async function refreshMonthly() {
 
   renderSavingsGoal(summary.savingsTarget, summary.savings, summary.savingsPercent);
   renderBudgets(summary.budgetStatus);
-  renderPieChart(summary.byCategory);
+  state.pieChart = renderPieChart('pie-chart', state.pieChart, summary.byCategory);
 }
 
 function renderBudgets(budgetStatus) {
@@ -570,12 +571,14 @@ function renderSavingsGoal(target, savings, percent) {
   fill.className = percent < 60 ? 'behind' : '';
 }
 
-function renderPieChart(byCategory) {
-  const ctx = document.getElementById('pie-chart');
-  if (state.pieChart) state.pieChart.destroy();
-  if (!byCategory.length) return;
+// Spending-by-category pie, shared by the monthly and yearly views so both use
+// the same categories and colors. Returns the new chart (or null if empty).
+function renderPieChart(canvasId, previous, byCategory) {
+  const ctx = document.getElementById(canvasId);
+  if (previous) previous.destroy();
+  if (!byCategory.length) return null;
 
-  state.pieChart = new Chart(ctx, {
+  return new Chart(ctx, {
     type: 'pie',
     data: {
       labels: byCategory.map((c) => c.category),
@@ -602,6 +605,8 @@ async function refreshYearly() {
   document.getElementById('year-eb-debit').textContent = `-${summary.expenseByMethod.debit.toFixed(2)}`;
 
   document.getElementById('invested-year-tab').textContent = summary.investedThisYear.toFixed(2);
+
+  state.yearlyPieChart = renderPieChart('yearly-pie-chart', state.yearlyPieChart, summary.byCategory);
 
   const ctx = document.getElementById('yearly-chart');
   if (state.yearlyChart) state.yearlyChart.destroy();

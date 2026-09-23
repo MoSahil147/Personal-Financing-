@@ -237,6 +237,7 @@ body {
 
 canvas { max-width: 100%; }
 .chart-box { position: relative; height: 220px; max-height: 40vh; }
+.yearly-bar-box { margin-top: 16px; }
 
 @media (max-width: 480px) {
   .chart-box { height: 180px; }
