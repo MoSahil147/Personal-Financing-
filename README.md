@@ -18,6 +18,7 @@ dashboard shows monthly + yearly charts, budget alerts, and reminders.
 ### 1. Supabase
 1. Create a project at supabase.com.
 2. Open the SQL editor and run `backend/schema.sql`.
+   Then run `backend/migrations/2026-09-24-budget-boxes.sql` (budget boxes).
 3. Grab your Project URL and `service_role` key (Settings → API).
 4. Seed your real starting bank balance (never commit this number to git —
    run it directly in the Supabase SQL editor, or use the app's PUT
