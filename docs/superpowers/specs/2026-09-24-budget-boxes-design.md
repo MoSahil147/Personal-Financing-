@@ -197,3 +197,10 @@ This replaces the calendar-based "Bridge period" and "Month-end close
 - **Guilt-free:** a bus or taxi to a regular outing or errand in Abu Dhabi.
 - **Roaming:** a bus or taxi to a major outing in Abu Dhabi, and any travel
   outside Abu Dhabi.
+
+## Change (2026-09-25): Home / Other Trips
+
+- The `home_trips` box is now named "Home / Other Trips". It covers trips home
+  and any other trip outside the UAE.
+- Roaming covers major Abu Dhabi outings and trips elsewhere inside the UAE.
+- Migration: `backend/migrations/2026-09-25-rename-home-trips.sql`.

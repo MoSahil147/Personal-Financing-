@@ -16,7 +16,7 @@ insert into buckets (key, name, percent, cap, sort) values
   ('groceries',  'Groceries',  10, null,  2),
   ('transport',  'Transport',   2, null,  3),
   ('guilt_free', 'Guilt-free',  5, 1000,  4),
-  ('home_trips', 'Home trips', 10, 10000, 5),
+  ('home_trips', 'Home / Other Trips', 10, 10000, 5),
   ('roaming',    'Roaming',     5, 10000, 6),
   ('emergency',  'Emergency',   5, 15000, 7),
   ('investing',  'Investing',  25, null,  8),
