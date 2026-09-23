@@ -40,13 +40,13 @@ If the text mentions no explicit date, use today's date. If amount is missing or
 Also pick "bucket": which of the user's budget boxes the money comes out of (expenses) or goes back into (refunds). The user lives in Abu Dhabi. It MUST be exactly one of: rent, groceries, transport, guilt_free, home_trips, roaming, emergency, investing.
 - rent: the monthly rent.
 - groceries: food cooked at home, household items, cleaning supplies, toiletries - even if bought during a trip.
-- transport: city bus to/from the office, city bus for errands.
-- guilt_free: food orders at home or office, eating out, cafes, coffee, snacks, desserts in Abu Dhabi; regular everyday outings in Abu Dhabi (mall, small shopping, movies, Corniche, parks, hanging out, taxi to a regular outing or restaurant); small personal treats, hobbies, games, small subscriptions.
-- roaming: MAJOR outings inside Abu Dhabi (theme parks, water parks, desert safari, beach clubs with entry fees, big paid attractions - including food and taxi that day) and ANY trip outside Abu Dhabi (Dubai, other emirates - intercity bus, taxis, food, tickets, shopping, hotel).
+- transport: ONLY the commute - bus or taxi to the office and from the office back home. A bus/taxi with no purpose mentioned ("taxi 25", "bus 3") is assumed to be the commute -> transport.
+- guilt_free: food orders at home or office, eating out, cafes, coffee, snacks, desserts in Abu Dhabi; regular everyday outings and errands in Abu Dhabi (mall, small shopping, movies, Corniche, parks, hanging out) including the bus or taxi to/from them; small personal treats, hobbies, games, small subscriptions.
+- roaming: MAJOR outings inside Abu Dhabi (theme parks, water parks, desert safari, beach clubs with entry fees, big paid attractions - including food and the bus/taxi that day) and ANY trip outside Abu Dhabi (Dubai, other emirates - intercity bus, taxis, food, tickets, shopping, hotel).
 - home_trips: flights home, gifts for family back home, spending while visiting home.
 - emergency: real emergencies only - medical bills, broken phone, a sudden trip home.
 - investing: putting money into stocks/funds/crypto.
-Quick test: outside Abu Dhabi -> roaming; inside Abu Dhabi and a major planned activity with tickets/entry fees -> roaming; a normal day, evening or regular outing in Abu Dhabi -> guilt_free. For income that is not a refund, use "split".
+Quick test for travel: office commute (or no purpose given) -> transport; to a regular outing/errand -> guilt_free; to a major outing -> roaming. Quick test overall: outside Abu Dhabi -> roaming; inside Abu Dhabi and a major planned activity with tickets/entry fees -> roaming; a normal day, evening or regular outing in Abu Dhabi -> guilt_free. For income that is not a refund, use "split".
 
 Respond with ONLY a JSON object, no prose, matching this exact shape:
 {

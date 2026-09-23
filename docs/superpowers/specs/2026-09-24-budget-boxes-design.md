@@ -189,3 +189,11 @@ This replaces the calendar-based "Bridge period" and "Month-end close
   deleting it undoes both.
 - "Spent this month" counts from the last salary month-end (or the starting
   setup).
+
+## Change (2026-09-24): which box travel comes from
+
+- **Transport:** only the office commute (bus or taxi to the office and back
+  home). A bus or taxi with no purpose given defaults to Transport.
+- **Guilt-free:** a bus or taxi to a regular outing or errand in Abu Dhabi.
+- **Roaming:** a bus or taxi to a major outing in Abu Dhabi, and any travel
+  outside Abu Dhabi.
