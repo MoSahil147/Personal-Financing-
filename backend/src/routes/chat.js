@@ -1,6 +1,7 @@
 const express = require('express');
 const supabase = require('../services/supabase');
 const { classifyChat } = require('../services/groq');
+const { suggestBucket } = require('../services/bucketMath');
 
 const router = express.Router();
 
@@ -45,6 +46,7 @@ router.post('/', async (req, res) => {
     }
 
     if (result.intent === 'log_entry') {
+      if (result.entry) result.entry.bucket = suggestBucket(result.entry);
       return res.json({ intent: 'log_entry', suggestion: result.entry, raw_input: text });
     }
 

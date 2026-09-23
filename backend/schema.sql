@@ -21,6 +21,7 @@
 --   alter table reminders add column if not exists priority smallint not null default 3 check (priority between 1 and 5);
 --   -- credit card limit (color-coded warning on the credit widget):
 --   alter table settings add column if not exists credit_card_limit numeric(12,2) not null default 0;
+--   -- budget boxes: run backend/migrations/2026-09-24-budget-boxes.sql
 
 create table if not exists entries (
   id uuid primary key default gen_random_uuid(),
@@ -32,6 +33,7 @@ create table if not exists entries (
   payment_method text check (payment_method in ('debit', 'credit', 'cash')), -- 'cash' applies to income too (someone paid you cash); null/'debit' income means it hit the bank directly
   note text,
   raw_input text,
+  bucket text, -- budget box key, 'split' (income split by %), or null (doesn't touch boxes)
   created_at timestamptz not null default now()
 );
 
@@ -44,7 +46,9 @@ create table if not exists settings (
   credit_outstanding numeric(12,2) not null default 0,
   monthly_savings_target numeric(12,2) not null default 0,
   cash_balance numeric(12,2) not null default 0,
-  credit_card_limit numeric(12,2) not null default 0 -- 0 = no limit set, widget stays blue
+  credit_card_limit numeric(12,2) not null default 0, -- 0 = no limit set, widget stays blue
+  last_closed_month text, -- 'YYYY-MM' of the last budget-box month-end close
+  boxes_start_month text not null default '2026-10' -- months before this are never closed
 );
 insert into settings (id, bank_balance, credit_outstanding, monthly_savings_target, cash_balance, credit_card_limit)
 values ('main', 0, 0, 0, 0, 0)
@@ -68,3 +72,6 @@ create table if not exists reminders (
 
 create index if not exists entries_date_idx on entries (entry_date);
 create index if not exists entries_category_idx on entries (category);
+
+-- Budget boxes: see backend/migrations/2026-09-24-budget-boxes.sql for the
+-- buckets + bucket_moves tables and their seed rows (run that file too).

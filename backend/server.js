@@ -10,6 +10,7 @@ const reminderRoutes = require('./src/routes/reminders');
 const summaryRoutes = require('./src/routes/summary');
 const settingsRoutes = require('./src/routes/settings');
 const chatRoutes = require('./src/routes/chat');
+const bucketRoutes = require('./src/routes/buckets');
 
 const app = express();
 app.use(cors());
@@ -25,6 +26,7 @@ app.use('/api/reminders', requireAuth, reminderRoutes);
 app.use('/api/summary', requireAuth, summaryRoutes);
 app.use('/api/settings', requireAuth, settingsRoutes);
 app.use('/api/chat', requireAuth, chatRoutes);
+app.use('/api/buckets', requireAuth, bucketRoutes);
 
 const port = process.env.PORT || 4000;
 app.listen(port, () => console.log(`Backend listening on port ${port}`));

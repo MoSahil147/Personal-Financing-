@@ -37,11 +37,21 @@ Putting money into stocks, mutual funds, ETFs, crypto, or "the market" is type "
 Classify every other expense as exactly one of: need, want, luxury. Income entries have classification "savings" only if the note is explicitly about saving/transferring to savings, otherwise null.
 Set payment_method to "cash" whenever the text says paid/received in cash. For expenses, otherwise set "credit" only if the text explicitly mentions credit card / credit, else default to "debit". Income entries default to payment_method null (money hit the bank) unless it was explicitly cash.
 If the text mentions no explicit date, use today's date. If amount is missing or unclear, set amount to null.
+Also pick "bucket": which of the user's budget boxes the money comes out of (expenses) or goes back into (refunds). The user lives in Abu Dhabi. It MUST be exactly one of: rent, groceries, transport, guilt_free, home_trips, roaming, emergency, investing.
+- rent: the monthly rent.
+- groceries: food cooked at home, household items, cleaning supplies, toiletries - even if bought during a trip.
+- transport: city bus to/from the office, city bus for errands.
+- guilt_free: food orders at home or office, eating out, cafes, coffee, snacks, desserts in Abu Dhabi; regular everyday outings in Abu Dhabi (mall, small shopping, movies, Corniche, parks, hanging out, taxi to a regular outing or restaurant); small personal treats, hobbies, games, small subscriptions.
+- roaming: MAJOR outings inside Abu Dhabi (theme parks, water parks, desert safari, beach clubs with entry fees, big paid attractions - including food and taxi that day) and ANY trip outside Abu Dhabi (Dubai, other emirates - intercity bus, taxis, food, tickets, shopping, hotel).
+- home_trips: flights home, gifts for family back home, spending while visiting home.
+- emergency: real emergencies only - medical bills, broken phone, a sudden trip home.
+- investing: putting money into stocks/funds/crypto.
+Quick test: outside Abu Dhabi -> roaming; inside Abu Dhabi and a major planned activity with tickets/entry fees -> roaming; a normal day, evening or regular outing in Abu Dhabi -> guilt_free. For income that is not a refund, use "split".
 
 Respond with ONLY a JSON object, no prose, matching this exact shape:
 {
   "intent": "log_entry" | "cash_withdrawal" | "add_reminder" | "remove_reminder" | "chat",
-  "entry": { "type": "income"|"expense", "amount": number|null, "category": string, "classification": "need"|"want"|"luxury"|"savings"|"investment"|null, "payment_method": "debit"|"credit"|"cash"|null, "date": "YYYY-MM-DD", "note": string } | null,
+  "entry": { "type": "income"|"expense", "amount": number|null, "category": string, "classification": "need"|"want"|"luxury"|"savings"|"investment"|null, "payment_method": "debit"|"credit"|"cash"|null, "date": "YYYY-MM-DD", "note": string, "bucket": string } | null,
   "withdrawal_amount": number | null,
   "reminder_text": string | null,
   "reminder_due_date": "YYYY-MM-DD" | null,

@@ -1,12 +1,15 @@
 const express = require('express');
 const supabase = require('../services/supabase');
 const { applyEntryBalanceEffect } = require('../services/balances');
+const buckets = require('../services/buckets');
+const { PICKABLE_KEYS } = require('../services/bucketMath');
 
 const router = express.Router();
 
 // Save a confirmed entry (after the user reviews/edits the suggestion).
 router.post('/', async (req, res) => {
   const { entry_date, type, amount, category, classification, payment_method, note, raw_input } = req.body || {};
+  const bucket = req.body?.bucket || null;
 
   if (!entry_date || !type || !amount || !category) {
     return res.status(400).json({ error: 'entry_date, type, amount, category are required' });
@@ -21,6 +24,11 @@ router.post('/', async (req, res) => {
   if (type === 'income' && method !== null && method !== 'cash') {
     return res.status(400).json({ error: 'income payment_method must be cash or omitted (bank)' });
   }
+  // Expenses come out of one box; income is either split by % or goes into one box.
+  const validBuckets = type === 'income' ? [...PICKABLE_KEYS, 'split'] : PICKABLE_KEYS;
+  if (bucket !== null && !validBuckets.includes(bucket)) {
+    return res.status(400).json({ error: `bucket must be one of: ${validBuckets.join(', ')}` });
+  }
 
   const { data, error } = await supabase
     .from('entries')
@@ -33,6 +41,7 @@ router.post('/', async (req, res) => {
       payment_method: method,
       note,
       raw_input,
+      bucket,
     })
     .select()
     .single();
@@ -44,6 +53,12 @@ router.post('/', async (req, res) => {
   } catch (err) {
     // Entry is saved but the balance update failed - surface it so it isn't silently wrong.
     return res.status(207).json({ ...data, balance_warning: err.message });
+  }
+
+  try {
+    await buckets.applyEntry(data, bucket);
+  } catch (err) {
+    return res.status(207).json({ ...data, bucket_warning: err.message });
   }
 
   res.status(201).json(data);
@@ -75,6 +90,14 @@ router.delete('/:id', async (req, res) => {
     .single();
   if (fetchErr) return res.status(404).json({ error: 'Entry not found' });
 
+  // Read the box moves before deleting - the delete cascades them away.
+  let boxMoves;
+  try {
+    boxMoves = await buckets.getEntryMoves(req.params.id);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+
   const { error } = await supabase.from('entries').delete().eq('id', req.params.id);
   if (error) return res.status(500).json({ error: error.message });
 
@@ -82,6 +105,12 @@ router.delete('/:id', async (req, res) => {
     await applyEntryBalanceEffect(existing, -1);
   } catch (err) {
     return res.status(207).json({ deleted: true, balance_warning: err.message });
+  }
+
+  try {
+    await buckets.reverseMoves(boxMoves);
+  } catch (err) {
+    return res.status(207).json({ deleted: true, bucket_warning: err.message });
   }
 
   res.status(204).end();
