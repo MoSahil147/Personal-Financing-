@@ -41,6 +41,36 @@
       </div>
     </div>
 
+    <div class="card" id="boxes-card">
+      <div class="boxes-head">
+        <h2>My Boxes</h2>
+        <span id="boxes-unallocated" class="boxes-chip" hidden></span>
+      </div>
+      <div class="boxes-totals">
+        <span>In boxes <strong id="boxes-total">-</strong></span>
+        <span>Real money <strong id="boxes-real">-</strong></span>
+      </div>
+      <div id="boxes-setup" hidden>
+        <p class="boxes-setup-text">Set up your boxes from the money you have now: rent gets 3,800 first, the rest is split by the plan's percentages.</p>
+        <div id="boxes-setup-preview"></div>
+        <button id="boxes-setup-btn">Set up my boxes</button>
+      </div>
+      <div id="boxes-grid"></div>
+      <div id="buffer-strip"></div>
+      <div class="box-pie-head">
+        <div class="tab-buttons">
+          <button id="box-pie-balances" class="active">Balances now</button>
+          <button id="box-pie-spent">Spent this month</button>
+        </div>
+      </div>
+      <div class="chart-box"><canvas id="box-pie-chart"></canvas></div>
+      <div id="box-pie-empty" class="box-pie-empty" hidden>Nothing to show yet.</div>
+      <details id="box-history">
+        <summary>Box history</summary>
+        <ul id="box-history-list"></ul>
+      </details>
+    </div>
+
     <div id="alerts" class="card"></div>
 
     <div class="card">
@@ -146,6 +176,9 @@
       </select>
       <label id="confirm-payment-label">Method</label>
       <select id="confirm-payment-method"></select>
+      <label>Box</label>
+      <select id="confirm-bucket"></select>
+      <div id="confirm-bucket-hint" class="confirm-hint"></div>
       <label>Date</label>
       <input type="date" id="confirm-date" />
       <label>Note</label>
