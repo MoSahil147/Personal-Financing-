@@ -50,6 +50,8 @@ const state = {
   pieChart: null,
   yearlyChart: null,
   yearlyPieChart: null,
+  categoryBarChart: null,
+  yearlyCategoryBarChart: null,
   pendingSuggestion: null,
   boxes: [],
   boxSpent: {},
@@ -536,6 +538,7 @@ async function refreshMonthly() {
   renderSavingsGoal(summary.savingsTarget, summary.savings, summary.savingsPercent);
   renderBudgets(summary.budgetStatus);
   state.pieChart = renderPieChart('pie-chart', state.pieChart, summary.byCategory);
+  state.categoryBarChart = renderCategoryBarChart('category-bar-chart', state.categoryBarChart, summary.byCategory);
 }
 
 function renderBudgets(budgetStatus) {
@@ -591,6 +594,38 @@ function renderPieChart(canvasId, previous, byCategory) {
   });
 }
 
+// Same categories and colors as the pie, as bars (biggest first) so exact
+// amounts can be read off the value axis on the left.
+function renderCategoryBarChart(canvasId, previous, byCategory) {
+  const ctx = document.getElementById(canvasId);
+  if (previous) previous.destroy();
+  if (!byCategory.length) return null;
+
+  const sorted = [...byCategory].sort((a, b) => b.total - a.total);
+  return new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: sorted.map((c) => c.category),
+      datasets: [{
+        label: 'Spent',
+        data: sorted.map((c) => c.total),
+        backgroundColor: sorted.map((c) => colorForLabel(c.category)),
+      }],
+    },
+    options: {
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: (item) => `${Number(item.raw).toFixed(2)} AED` } },
+      },
+      scales: {
+        x: { ticks: { color: '#9aa0ac', autoSkip: false, maxRotation: 60, font: { size: 11 } } },
+        y: { beginAtZero: true, ticks: { color: '#9aa0ac' } },
+      },
+    },
+  });
+}
+
 async function refreshYearly() {
   const summary = await api(`/api/summary/yearly?year=${state.year}`);
 
@@ -607,6 +642,7 @@ async function refreshYearly() {
   document.getElementById('invested-year-tab').textContent = summary.investedThisYear.toFixed(2);
 
   state.yearlyPieChart = renderPieChart('yearly-pie-chart', state.yearlyPieChart, summary.byCategory);
+  state.yearlyCategoryBarChart = renderCategoryBarChart('yearly-category-bar-chart', state.yearlyCategoryBarChart, summary.byCategory);
 
   const ctx = document.getElementById('yearly-chart');
   if (state.yearlyChart) state.yearlyChart.destroy();
