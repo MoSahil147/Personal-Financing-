@@ -11,8 +11,8 @@ const BUCKET_KEYS = [
   'rent', 'groceries', 'transport', 'guilt_free', 'home_trips', 'roaming',
   'emergency', 'investing', 'buffer',
 ];
-// The buffer is only fed by grocery/transport leftovers at month end, so it's
-// never picked by hand for a spend or refund.
+// The buffer is only fed by leftovers (grocery/transport at month end, rent's
+// unused salary share), so it's never picked by hand for a spend or refund.
 const PICKABLE_KEYS = BUCKET_KEYS.filter((k) => k !== 'buffer');
 
 // Fallback box for an expense when the chat parser's pick is missing/invalid.
@@ -71,6 +71,47 @@ function computeSplit(amount, boxes) {
     delete shares.emergency;
   }
   shares.investing = round2((shares.investing || 0) + amount - total(shares));
+  return shares;
+}
+
+// Salary split: rent is topped up to 3,800 first (a box already holding 20
+// only gets 3,780), every other box gets its normal % of the salary, and
+// whatever rent didn't need goes buffer (to its cap) -> emergency (to its
+// cap) -> investing. If a smaller salary can't cover rent plus everyone's
+// share, the other boxes shrink in proportion - rent is never cut.
+function computeSalarySplit(amount, boxes) {
+  const shares = {};
+  const add = (key, v) => {
+    const x = round2(v);
+    if (x !== 0) shares[key] = round2((shares[key] || 0) + x);
+  };
+
+  const topUp = round2(Math.min(amount, Math.max(0, RENT_AMOUNT - boxes.rent.balance)));
+  add('rent', topUp);
+
+  const others = Object.entries(boxes).filter(([key, box]) => key !== 'rent' && box.percent > 0);
+  const wanted = others.reduce((s, [, box]) => s + (amount * box.percent) / 100, 0);
+  const rest = round2(amount - topUp);
+  const scale = wanted > rest ? rest / wanted : 1;
+  const emergencyFull = boxes.emergency.cap != null && boxes.emergency.balance >= boxes.emergency.cap;
+  for (const [key, box] of others) {
+    const share = ((amount * box.percent) / 100) * scale;
+    add(key === 'emergency' && emergencyFull ? 'investing' : key, share);
+  }
+
+  let surplus = round2(amount - total(shares));
+  if (scale < 1 || surplus <= 0) {
+    add('investing', surplus); // just rounding pennies
+    return shares;
+  }
+  for (const key of ['buffer', 'emergency']) {
+    const box = boxes[key];
+    const room = Math.max(0, box.cap - box.balance - (shares[key] || 0));
+    const x = Math.min(surplus, room);
+    add(key, x);
+    surplus = round2(surplus - x);
+  }
+  add('investing', surplus);
   return shares;
 }
 
@@ -151,26 +192,6 @@ function computeClose(boxes) {
   return { balances: bal, moves };
 }
 
-function nextMonth(ym) {
-  let [y, m] = ym.split('-').map(Number);
-  m += 1;
-  if (m > 12) { m = 1; y += 1; }
-  return `${y}-${String(m).padStart(2, '0')}`;
-}
-
-// Months ('YYYY-MM') that have ended but not been closed yet, oldest first.
-// Nothing before `startMonth` is ever closed - that's how Sep + Oct 2026 run
-// as one period on the starting money, with the first close for October.
-function monthsToClose(startMonth, lastClosed, currentMonth) {
-  let month = lastClosed && lastClosed >= startMonth ? nextMonth(lastClosed) : startMonth;
-  const months = [];
-  while (month < currentMonth) {
-    months.push(month);
-    month = nextMonth(month);
-  }
-  return months;
-}
-
 module.exports = {
   BUCKET_KEYS,
   PICKABLE_KEYS,
@@ -178,7 +199,7 @@ module.exports = {
   defaultBucketFor,
   suggestBucket,
   computeSplit,
+  computeSalarySplit,
   computeSetup,
   computeClose,
-  monthsToClose,
 };

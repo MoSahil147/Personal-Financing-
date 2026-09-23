@@ -169,3 +169,23 @@ Node's built-in `node:test` runs against the pure functions:
   gaining 1,800 overflow and Emergency at 15,000).
 - The bridge rule: no close for 2026-09, and the close for 2026-10 runs in
   November.
+
+## Change (2026-09-24): the salary starts the month
+
+This replaces the calendar-based "Bridge period" and "Month-end close
+(automatic)" sections above.
+
+- There is no calendar close. Logging a **Salary** income with "New month"
+  ticked (the default for Salary) first runs the month-end close (same
+  order as above), then splits the salary.
+- **Salary split:** Rent is topped up to 3,800 (a box holding 20 gets 3,780).
+  Every other box gets its normal % of the salary. Rent's unused share goes
+  to the Buffer (up to 300), then Emergency (up to 15,000), then Investing.
+  A smaller salary still fills Rent in full, and the other boxes shrink in
+  proportion.
+- **Other income** (gift, winnings, a repayment) is a plain % split with no
+  close.
+- The close moves and the split moves are tied to the salary entry, so
+  deleting it undoes both.
+- "Spent this month" counts from the last salary month-end (or the starting
+  setup).

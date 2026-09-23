@@ -334,6 +334,8 @@ canvas { max-width: 100%; }
 #confirm-save { background: var(--accent); color: white; }
 #confirm-cancel { background: #0d0f14; color: var(--text); border: 1px solid var(--border) !important; }
 
+#confirm-box .confirm-check { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: var(--text); margin-top: 8px; cursor: pointer; }
+#confirm-box .confirm-check input { width: auto; margin: 2px 0 0; padding: 0; flex: none; }
 .confirm-hint { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
 .confirm-hint strong { color: var(--text); }
 .confirm-hint .bad { color: var(--danger); }

@@ -46,9 +46,7 @@ create table if not exists settings (
   credit_outstanding numeric(12,2) not null default 0,
   monthly_savings_target numeric(12,2) not null default 0,
   cash_balance numeric(12,2) not null default 0,
-  credit_card_limit numeric(12,2) not null default 0, -- 0 = no limit set, widget stays blue
-  last_closed_month text, -- 'YYYY-MM' of the last budget-box month-end close
-  boxes_start_month text not null default '2026-10' -- months before this are never closed
+  credit_card_limit numeric(12,2) not null default 0 -- 0 = no limit set, widget stays blue
 );
 insert into settings (id, bank_balance, credit_outstanding, monthly_savings_target, cash_balance, credit_card_limit)
 values ('main', 0, 0, 0, 0, 0)

@@ -10,6 +10,8 @@ const router = express.Router();
 router.post('/', async (req, res) => {
   const { entry_date, type, amount, category, classification, payment_method, note, raw_input } = req.body || {};
   const bucket = req.body?.bucket || null;
+  // A salary starts a new month: run the month-end close before splitting it.
+  const newMonth = type === 'income' && bucket === 'split' && req.body?.new_month === true;
 
   if (!entry_date || !type || !amount || !category) {
     return res.status(400).json({ error: 'entry_date, type, amount, category are required' });
@@ -56,7 +58,7 @@ router.post('/', async (req, res) => {
   }
 
   try {
-    await buckets.applyEntry(data, bucket);
+    await buckets.applyEntry(data, bucket, { newMonth });
   } catch (err) {
     return res.status(207).json({ ...data, bucket_warning: err.message });
   }

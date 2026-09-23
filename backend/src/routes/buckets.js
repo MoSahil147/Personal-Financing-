@@ -20,12 +20,16 @@ router.get('/moves', async (_req, res) => {
   }
 });
 
-// Preview how an income amount would be split, for the confirm modal.
+// Preview an income split for the confirm modal: the month-end moves first
+// (when new_month=1, i.e. a salary starting a new month), then the split.
 router.get('/split-preview', async (req, res) => {
   const amount = Number(req.query.amount);
   if (!amount || amount <= 0) return res.status(400).json({ error: 'amount must be a positive number' });
   try {
-    res.json({ shares: await buckets.splitPreview(amount) });
+    res.json(await buckets.splitPreview(amount, {
+      category: req.query.category || null,
+      newMonth: req.query.new_month === '1',
+    }));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

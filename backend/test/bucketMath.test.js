@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  computeSplit, computeSetup, computeClose, monthsToClose, suggestBucket,
+  computeSplit, computeSalarySplit, computeSetup, computeClose, suggestBucket,
 } = require('../src/services/bucketMath');
 
 // Builds a boxes map with the plan's percentages/caps and the given balances.
@@ -121,12 +121,49 @@ test('close never moves rent', () => {
   assert.equal(balances.rent, 3800);
 });
 
-test('bridge: nothing closes in Sep/Oct 2026, October closes in November', () => {
-  assert.deepEqual(monthsToClose('2026-10', null, '2026-09'), []);
-  assert.deepEqual(monthsToClose('2026-10', null, '2026-10'), []);
-  assert.deepEqual(monthsToClose('2026-10', null, '2026-11'), ['2026-10']);
-  assert.deepEqual(monthsToClose('2026-10', '2026-10', '2026-11'), []);
-  assert.deepEqual(monthsToClose('2026-10', '2026-11', '2027-02'), ['2026-12', '2027-01']);
+test('salary with empty rent box gives exactly the plan amounts', () => {
+  assert.deepEqual(computeSalarySplit(10000, boxes()), {
+    rent: 3800, groceries: 1000, transport: 200, guilt_free: 500,
+    home_trips: 1000, roaming: 500, emergency: 500, investing: 2500,
+  });
+});
+
+test('salary tops rent up to 3,800 and the unused part goes to the buffer', () => {
+  const split = computeSalarySplit(10000, boxes({ rent: 20 }));
+  assert.equal(split.rent, 3780);
+  assert.equal(split.buffer, 20);
+  assert.equal(split.groceries, 1000);
+  assert.equal(sum(split), 10000);
+});
+
+test('salary surplus fills buffer to 300, then emergency', () => {
+  const split = computeSalarySplit(10000, boxes({ rent: 500, buffer: 250 }));
+  assert.equal(split.rent, 3300);
+  assert.equal(split.buffer, 50);
+  assert.equal(split.emergency, 500 + 450);
+  assert.equal(sum(split), 10000);
+});
+
+test('rent already full: its whole share flows buffer -> emergency', () => {
+  const split = computeSalarySplit(10000, boxes({ rent: 3800, buffer: 300 }));
+  assert.equal(split.rent, undefined);
+  assert.equal(split.buffer, undefined);
+  assert.equal(split.emergency, 4300);
+});
+
+test('smaller salary still covers rent in full, others shrink in proportion', () => {
+  const split = computeSalarySplit(8000, boxes());
+  assert.equal(split.rent, 3800);
+  assert.equal(sum(split), 8000);
+  assert.ok(split.groceries > 600 && split.groceries < 800); // normal share 800, shrunk to fit
+  assert.equal(split.buffer, undefined);
+});
+
+test('salary with emergency full sends its share and any surplus to investing', () => {
+  const split = computeSalarySplit(10000, boxes({ emergency: 15000, rent: 100, buffer: 300 }));
+  assert.equal(split.emergency, undefined);
+  assert.equal(split.investing, 3000 + 100);
+  assert.equal(sum(split), 10000);
 });
 
 test('suggestBucket: keeps a valid parser pick, falls back by category', () => {

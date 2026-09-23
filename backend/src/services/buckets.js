@@ -59,9 +59,30 @@ async function applyMoves(moves, { reason, entry_id = null, date = todayISO() })
   if (error) throw new Error(error.message);
 }
 
+// Salary tops rent up to 3,800 first; any other income is a plain % split.
+function splitFor(category, amount, boxes) {
+  return category === 'Salary' ? math.computeSalarySplit(amount, boxes) : math.computeSplit(amount, boxes);
+}
+
+// Works out what an income split would do without saving anything: the
+// month-end moves (if this income starts a new month) and then the split,
+// calculated on the balances as they'll be after that month-end.
+function planIncome(amount, category, newMonth, boxes) {
+  let closeMoves = [];
+  let after = boxes;
+  if (newMonth) {
+    const closed = math.computeClose(boxes);
+    closeMoves = closed.moves;
+    after = Object.fromEntries(Object.entries(boxes).map(([k, b]) => [k, { ...b, balance: closed.balances[k] }]));
+  }
+  return { closeMoves, shares: splitFor(category, amount, after) };
+}
+
 // Moves money into/out of the boxes for a newly saved entry. `bucket` is a
 // box key, 'split' (income split by percentage), or null (leave boxes alone).
-async function applyEntry(entry, bucket) {
+// `newMonth` (a salary arriving) runs the month-end close before the split.
+// Every move is tied to the entry, so deleting the entry undoes all of it.
+async function applyEntry(entry, bucket, { newMonth = false } = {}) {
   if (!bucket) return;
   const amount = Number(entry.amount);
   const opts = { entry_id: entry.id, date: entry.entry_date };
@@ -70,7 +91,11 @@ async function applyEntry(entry, bucket) {
     return applyMoves([{ from: bucket, amount }], { ...opts, reason: 'spend' });
   }
   if (bucket === 'split') {
-    const shares = math.computeSplit(amount, toMap(await loadBuckets()));
+    if (newMonth) {
+      const { moves } = math.computeClose(toMap(await loadBuckets()));
+      await applyMoves(moves, { ...opts, reason: 'close' });
+    }
+    const shares = splitFor(entry.category, amount, toMap(await loadBuckets()));
     return applyMoves(Object.entries(shares).map(([to, a]) => ({ to, amount: a })), { ...opts, reason: 'income' });
   }
   return applyMoves([{ to: bucket, amount }], { ...opts, reason: entry.category === 'Refund' ? 'refund' : 'income' });
@@ -86,34 +111,6 @@ async function getEntryMoves(entryId) {
 
 async function reverseMoves(moves) {
   await adjustBalances(moves.map((m) => ({ from: m.to_bucket, to: m.from_bucket, amount: Number(m.amount) })));
-}
-
-function lastDayOf(month) {
-  const [y, m] = month.split('-').map(Number);
-  return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
-}
-
-// Runs every month-end close that's due (lazily, whenever the boxes are read -
-// the Render backend sleeps, so a timer can't be trusted). Each month is
-// claimed on settings.last_closed_month first, so two requests arriving at
-// once can't both close the same month.
-async function closeDueMonths() {
-  const settings = await getSettings();
-  const current = todayISO().slice(0, 7);
-  let last = settings.last_closed_month || null;
-  const months = math.monthsToClose(settings.boxes_start_month || '2026-10', last, current);
-
-  for (const month of months) {
-    let claim = supabase.from('settings').update({ last_closed_month: month }).eq('id', 'main');
-    claim = last ? claim.eq('last_closed_month', last) : claim.is('last_closed_month', null);
-    const { data, error } = await claim.select();
-    if (error) throw new Error(error.message);
-    if (!data.length) return; // another request is already closing it
-
-    const { moves } = math.computeClose(toMap(await loadBuckets()));
-    await applyMoves(moves, { reason: `close:${month}`, date: lastDayOf(month) });
-    last = month;
-  }
 }
 
 async function hasAnyMoves() {
@@ -136,17 +133,29 @@ async function setupFromCurrentMoney() {
   return preview;
 }
 
-async function splitPreview(amount) {
-  return math.computeSplit(amount, toMap(await loadBuckets()));
+async function splitPreview(amount, { category, newMonth }) {
+  return planIncome(amount, category, newMonth, toMap(await loadBuckets()));
 }
 
-// Total spent from each box since the 1st of this month.
-async function spentThisMonth() {
+// The current "month" starts at the last salary month-end (or the starting
+// setup), not on the 1st - a new month begins when the salary arrives.
+async function monthStartedAt() {
   const { data, error } = await supabase
     .from('bucket_moves')
-    .select('from_bucket, amount')
-    .eq('reason', 'spend')
-    .gte('move_date', `${todayISO().slice(0, 7)}-01`);
+    .select('created_at')
+    .in('reason', ['close', 'setup'])
+    .order('created_at', { ascending: false })
+    .limit(1);
+  if (error) throw new Error(error.message);
+  return data[0]?.created_at || null;
+}
+
+// Total spent from each box since the current month started.
+async function spentThisMonth() {
+  const since = await monthStartedAt();
+  let query = supabase.from('bucket_moves').select('from_bucket, amount').eq('reason', 'spend');
+  if (since) query = query.gte('created_at', since);
+  const { data, error } = await query;
   if (error) throw new Error(error.message);
   const spent = {};
   for (const m of data) spent[m.from_bucket] = math.round2((spent[m.from_bucket] || 0) + Number(m.amount));
@@ -154,7 +163,6 @@ async function spentThisMonth() {
 }
 
 async function overview() {
-  await closeDueMonths();
   const [buckets, real, spent, used] = await Promise.all([loadBuckets(), realMoney(), spentThisMonth(), hasAnyMoves()]);
   const total = math.round2(buckets.reduce((s, b) => s + b.balance, 0));
   return {
@@ -181,7 +189,6 @@ module.exports = {
   applyEntry,
   getEntryMoves,
   reverseMoves,
-  closeDueMonths,
   setupPreview,
   setupFromCurrentMoney,
   splitPreview,

@@ -479,11 +479,9 @@ document.getElementById('box-pie-balances').addEventListener('click', () => setB
 document.getElementById('box-pie-spent').addEventListener('click', () => setBoxPieMode('spent'));
 
 function moveReasonLabel(reason) {
-  if (reason.startsWith('close:')) {
-    const [y, m] = reason.slice(6).split('-').map(Number);
-    return `Month end · ${new Date(y, m - 1, 1).toLocaleString('en-US', { month: 'short', year: 'numeric' })}`;
-  }
-  return { setup: 'Starting split', income: 'Income', refund: 'Refund', spend: 'Spent' }[reason] || reason;
+  return {
+    setup: 'Starting split', income: 'Income split', refund: 'Refund', spend: 'Spent', close: 'Month end (salary)',
+  }[reason] || reason;
 }
 
 async function refreshBoxHistory() {
@@ -740,6 +738,13 @@ function updateBucketOptions(selected) {
   const wanted = selected === undefined ? fallback : (selected ?? '');
   select.value = options.some((o) => o.value === wanted) ? wanted : fallback;
   state.suggestedBucket = select.value;
+  resetNewMonth();
+}
+
+// A salary starts a new month, so the tick is on by default for Salary; it can
+// be unticked if a salary ever arrives in two parts.
+function resetNewMonth() {
+  document.getElementById('confirm-new-month').checked = categorySelect.value === 'Salary';
   updateBucketHint();
 }
 
@@ -748,6 +753,7 @@ async function updateBucketHint() {
   const value = document.getElementById('confirm-bucket').value;
   const isExpense = document.getElementById('confirm-type').value === 'expense';
   const amount = Number(document.getElementById('confirm-amount').value) || 0;
+  document.getElementById('confirm-new-month-row').hidden = isExpense || value !== 'split';
 
   if (!value) {
     hint.textContent = "This won't change any box.";
@@ -758,11 +764,18 @@ async function updateBucketHint() {
       hint.textContent = 'Enter an amount to see how it will be split.';
       return;
     }
+    const newMonth = document.getElementById('confirm-new-month').checked;
+    const params = new URLSearchParams({ amount, category: categorySelect.value, new_month: newMonth ? '1' : '0' });
     try {
-      const { shares } = await api(`/api/buckets/split-preview?amount=${amount}`);
-      hint.innerHTML = 'Will be split: ' + Object.entries(shares)
+      const { closeMoves, shares } = await api(`/api/buckets/split-preview?${params}`);
+      const splitText = Object.entries(shares)
         .map(([key, v]) => `${escapeHtml(boxName(key))} <strong>${fmt(v)}</strong>`)
         .join(' · ');
+      const closeText = closeMoves.length
+        ? closeMoves.map((m) => `${escapeHtml(boxName(m.from))} → ${escapeHtml(boxName(m.to))} <strong>${fmt(m.amount)}</strong>`).join(' · ')
+        : 'nothing to move';
+      hint.innerHTML = (newMonth ? `<div>Month-end first: ${closeText}</div>` : '')
+        + `<div>${newMonth ? 'Then split' : 'Will be split'}: ${splitText}</div>`;
     } catch (err) {
       hint.textContent = `Couldn't preview the split: ${err.message}`;
     }
@@ -770,6 +783,7 @@ async function updateBucketHint() {
   }
 
   const box = state.boxes.find((b) => b.key === value);
+  if (!box) return;
   const picked = value === state.suggestedBucket ? 'I picked' : 'You picked';
   if (!isExpense) {
     hint.innerHTML = `${picked} <strong>${escapeHtml(box.name)}</strong> to put this back into. OK? Change it above if not.`;
@@ -781,10 +795,12 @@ async function updateBucketHint() {
 }
 
 document.getElementById('confirm-bucket').addEventListener('change', updateBucketHint);
+document.getElementById('confirm-new-month').addEventListener('change', updateBucketHint);
 document.getElementById('confirm-amount').addEventListener('change', updateBucketHint);
 
 const categorySelect = document.getElementById('confirm-category');
 categorySelect.innerHTML = CATEGORIES.map((c) => `<option value="${c}">${c}</option>`).join('');
+categorySelect.addEventListener('change', resetNewMonth);
 
 function openConfirmModal(suggestion, raw_input) {
   state.pendingSuggestion = { ...suggestion, raw_input };
@@ -817,6 +833,8 @@ document.getElementById('confirm-save').addEventListener('click', async () => {
     note: document.getElementById('confirm-note').value.trim(),
     raw_input: state.pendingSuggestion?.raw_input || null,
     bucket: document.getElementById('confirm-bucket').value || null,
+    new_month: !document.getElementById('confirm-new-month-row').hidden
+      && document.getElementById('confirm-new-month').checked,
   };
 
   if (!payload.amount || !payload.category || !payload.entry_date) {

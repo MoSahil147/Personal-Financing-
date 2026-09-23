@@ -29,7 +29,7 @@ create table if not exists bucket_moves (
   from_bucket text references buckets(key),   -- null = money coming in
   to_bucket text references buckets(key),     -- null = money going out
   amount numeric(12,2) not null check (amount > 0),
-  reason text not null,                       -- setup | income | refund | spend | close:YYYY-MM
+  reason text not null,                       -- setup | income | refund | spend | close (month-end, run by a salary)
   entry_id uuid references entries(id) on delete cascade,
   created_at timestamptz not null default now()
 );
@@ -37,6 +37,6 @@ create index if not exists bucket_moves_entry_idx on bucket_moves (entry_id);
 create index if not exists bucket_moves_date_idx on bucket_moves (move_date);
 
 alter table entries add column if not exists bucket text;  -- box key, 'split', or null
-alter table settings add column if not exists last_closed_month text;  -- 'YYYY-MM'
--- Sep + Oct 2026 run as one period on the starting money; first close is October.
-alter table settings add column if not exists boxes_start_month text not null default '2026-10';
+-- (An earlier version also added settings.last_closed_month and
+-- settings.boxes_start_month for a calendar month-end. The month-end now runs
+-- when a salary is logged, so those two columns are unused and harmless.)
