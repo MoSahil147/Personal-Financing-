@@ -403,7 +403,7 @@ async function refreshBoxes() {
     card.innerHTML = `
       <div class="box-name">${escapeHtml(b.name)}</div>
       <div class="box-balance ${b.balance < 0 ? 'bad' : ''}">${fmt(b.balance)}</div>
-      ${b.cap ? capBar(b.key, travel ? travelTotal() : b.balance, Number(b.cap), travel ? 'Travel ' : '') : ''}`;
+      ${b.cap ? capBar(b.key, travel ? travelTotal() : b.balance, Number(b.cap), travel ? 'Home + Roaming together: ' : '') : ''}`;
     grid.appendChild(card);
   }
 
