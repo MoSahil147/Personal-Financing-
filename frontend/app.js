@@ -394,7 +394,7 @@ async function refreshBoxes() {
     card.className = 'box-card';
     card.style.borderTopColor = boxColor(b.key);
     card.innerHTML = `
-      <div class="box-name">${escapeHtml(b.name)}</div>
+      <div class="box-name">${escapeHtml(b.name)}${Number(b.percent) > 0 ? ` <span class="box-percent">${Number(b.percent)}%</span>` : ''}</div>
       <div class="box-balance ${b.balance < 0 ? 'bad' : ''}">${fmt(b.balance)}</div>
       ${b.cap ? capBar(b.key, b.balance, Number(b.cap)) : ''}`;
     grid.appendChild(card);

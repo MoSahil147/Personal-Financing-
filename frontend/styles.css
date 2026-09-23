@@ -358,6 +358,7 @@ canvas { max-width: 100%; }
 #boxes-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 .box-card { background: #0d0f14; border: 1px solid var(--border); border-top: 3px solid var(--accent); border-radius: 10px; padding: 10px 12px; min-width: 0; }
 .box-name { color: var(--muted); font-size: 12px; }
+.box-percent { color: var(--text); font-weight: 600; background: var(--border); border-radius: 999px; padding: 0 6px; margin-left: 2px; white-space: nowrap; }
 .box-balance { font-size: 20px; font-weight: 700; margin-top: 2px; overflow-wrap: anywhere; }
 .box-balance.bad, .buffer-value.bad { color: var(--danger); }
 .box-cap-bar { height: 4px; background: var(--border); border-radius: 2px; margin-top: 8px; overflow: hidden; }
