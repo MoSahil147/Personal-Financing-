@@ -8,7 +8,7 @@ const {
 function boxes(balances = {}) {
   const defs = {
     rent: [38, null], groceries: [10, null], transport: [2, null], guilt_free: [5, 1000],
-    home_trips: [10, 10000], roaming: [5, 10000], emergency: [5, 15000], investing: [25, null],
+    home_trips: [10, 7000], roaming: [5, 3000], emergency: [5, 15000], investing: [25, null],
     buffer: [0, 300],
   };
   return Object.fromEntries(Object.entries(defs).map(([key, [percent, cap]]) => (
@@ -69,11 +69,25 @@ test('buffer fills to 300 first, then emergency', () => {
   assert.equal(balances.emergency, 1150);
 });
 
-test('example C: travel over 10,000 sends 900 to emergency, roaming trimmed first', () => {
+test('roaming over its own 3,000 cap sends only its extra to emergency', () => {
   const { balances } = computeClose(boxes({ home_trips: 7000, roaming: 3900, emergency: 2000 }));
   assert.equal(balances.home_trips, 7000);
   assert.equal(balances.roaming, 3000);
   assert.equal(balances.emergency, 2900);
+});
+
+test('home / other trips over 7,000 overflows on its own, roaming untouched', () => {
+  const { balances } = computeClose(boxes({ home_trips: 7500, roaming: 1000, emergency: 2000 }));
+  assert.equal(balances.home_trips, 7000);
+  assert.equal(balances.roaming, 1000);
+  assert.equal(balances.emergency, 2500);
+});
+
+test('a full roaming box does not spill into home / other trips', () => {
+  const { balances } = computeClose(boxes({ guilt_free: 1300, roaming: 3000, home_trips: 100, emergency: 0 }));
+  assert.equal(balances.roaming, 3000);
+  assert.equal(balances.home_trips, 100);
+  assert.equal(balances.emergency, 300);
 });
 
 test('example E: groceries overspent, transport under, buffer covers net 100', () => {

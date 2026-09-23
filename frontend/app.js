@@ -365,16 +365,10 @@ function boxName(key) {
   return state.boxes.find((b) => b.key === key)?.name || key;
 }
 
-function travelTotal() {
-  return state.boxes
-    .filter((b) => b.key === 'home_trips' || b.key === 'roaming')
-    .reduce((s, b) => s + b.balance, 0);
-}
-
-function capBar(key, filled, cap, label) {
+function capBar(key, filled, cap) {
   const pct = Math.max(0, Math.min(100, (filled / cap) * 100));
   return `<div class="box-cap-bar"><div style="width:${pct}%;background:${boxColor(key)}"></div></div>
-    <div class="box-cap-label">${label}${fmt(filled)} / ${fmt(cap)}</div>`;
+    <div class="box-cap-label">Limit ${fmt(cap)}</div>`;
 }
 
 async function refreshBoxes() {
@@ -396,14 +390,13 @@ async function refreshBoxes() {
   grid.innerHTML = '';
   for (const b of state.boxes) {
     if (b.key === 'buffer') continue;
-    const travel = b.key === 'home_trips' || b.key === 'roaming';
     const card = document.createElement('div');
     card.className = 'box-card';
     card.style.borderTopColor = boxColor(b.key);
     card.innerHTML = `
       <div class="box-name">${escapeHtml(b.name)}</div>
       <div class="box-balance ${b.balance < 0 ? 'bad' : ''}">${fmt(b.balance)}</div>
-      ${b.cap ? capBar(b.key, travel ? travelTotal() : b.balance, Number(b.cap), travel ? 'Home + Roaming together: ' : '') : ''}`;
+      ${b.cap ? capBar(b.key, b.balance, Number(b.cap)) : ''}`;
     grid.appendChild(card);
   }
 

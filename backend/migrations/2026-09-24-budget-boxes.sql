@@ -7,7 +7,7 @@ create table if not exists buckets (
   name text not null,
   balance numeric(12,2) not null default 0,
   percent numeric(5,2) not null default 0,
-  cap numeric(12,2),            -- null = no cap; home_trips/roaming share roaming.cap
+  cap numeric(12,2),            -- null = no cap
   sort smallint not null
 );
 
@@ -16,8 +16,8 @@ insert into buckets (key, name, percent, cap, sort) values
   ('groceries',  'Groceries',  10, null,  2),
   ('transport',  'Transport',   2, null,  3),
   ('guilt_free', 'Guilt-free',  5, 1000,  4),
-  ('home_trips', 'Home / Other Trips', 10, 10000, 5),
-  ('roaming',    'Roaming',     5, 10000, 6),
+  ('home_trips', 'Home / Other Trips', 10, 7000, 5),
+  ('roaming',    'Roaming',     5, 3000,  6),
   ('emergency',  'Emergency',   5, 15000, 7),
   ('investing',  'Investing',  25, null,  8),
   ('buffer',     'Buffer',      0, 300,   9)

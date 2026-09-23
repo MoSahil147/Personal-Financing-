@@ -3,7 +3,6 @@
 // can be tested directly with plain numbers.
 //
 // A "boxes" map looks like { rent: { key, balance, percent, cap }, ... }.
-// Home trips + roaming share one travel cap, read from roaming.cap.
 
 const RENT_AMOUNT = 3800;
 
@@ -177,13 +176,10 @@ function computeClose(boxes) {
   // 2. Guilt-free keeps up to its cap; only the extra goes to roaming.
   if (bal.guilt_free > cap('guilt_free')) move('guilt_free', 'roaming', bal.guilt_free - cap('guilt_free'));
 
-  // 3. Travel (home trips + roaming) over the shared cap: trim roaming first so
-  //    trips home stay protected, extra goes to emergency -> investing.
-  const excess = round2(bal.home_trips + bal.roaming - cap('roaming'));
-  if (excess > 0) {
-    const fromRoaming = Math.min(excess, Math.max(0, bal.roaming));
-    pour('roaming', fromRoaming, ['emergency', 'investing']);
-    pour('home_trips', excess - fromRoaming, ['emergency', 'investing']);
+  // 3. Roaming and Home / Other Trips each keep up to their own cap; only the
+  //    extra goes to emergency -> investing.
+  for (const key of ['roaming', 'home_trips']) {
+    if (bal[key] > cap(key)) pour(key, bal[key] - cap(key), ['emergency', 'investing']);
   }
 
   // 4. Emergency keeps up to its cap; the extra goes to investing.

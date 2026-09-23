@@ -204,3 +204,11 @@ This replaces the calendar-based "Bridge period" and "Month-end close
   and any other trip outside the UAE.
 - Roaming covers major Abu Dhabi outings and trips elsewhere inside the UAE.
 - Migration: `backend/migrations/2026-09-25-rename-home-trips.sql`.
+
+## Change (2026-09-25): separate travel boxes
+
+- Home / Other Trips (10%, cap 7,000) and Roaming (5%, cap 3,000) are fully
+  separate boxes. They replace the shared 10,000 travel cap.
+- At month-end, each box's extra over its own cap goes to Emergency, then
+  Investing.
+- Migration: `backend/migrations/2026-09-25-separate-travel-caps.sql`.
