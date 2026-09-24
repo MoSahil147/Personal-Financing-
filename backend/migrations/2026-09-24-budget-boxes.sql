@@ -11,16 +11,18 @@ create table if not exists buckets (
   sort smallint not null
 );
 
-insert into buckets (key, name, percent, cap, sort) values
-  ('rent',       'Rent',       38, null,  1),
-  ('groceries',  'Groceries',  10, null,  2),
-  ('transport',  'Transport',   2, null,  3),
-  ('guilt_free', 'Guilt-free',  5, 1000,  4),
-  ('home_trips', 'Home / Other Trips', 10, 7500, 5),
-  ('roaming',    'Roaming',     5, 2500,  6),
-  ('emergency',  'Emergency',   5, 15000, 7),
-  ('investing',  'Investing',  25, null,  8),
-  ('buffer',     'Buffer',      0, 300,   9)
+-- Percentages (percent), limits (cap) and the rent amount (target) are set
+-- privately in the SQL editor afterwards - they are never kept in this repo.
+insert into buckets (key, name, sort) values
+  ('rent',       'Rent',               1),
+  ('groceries',  'Groceries',          2),
+  ('transport',  'Transport',          3),
+  ('guilt_free', 'Guilt-free',         4),
+  ('home_trips', 'Home / Other Trips', 5),
+  ('roaming',    'Roaming',            6),
+  ('emergency',  'Emergency',          7),
+  ('investing',  'Investing',          8),
+  ('buffer',     'Buffer',             9)
 on conflict (key) do nothing;
 
 create table if not exists bucket_moves (

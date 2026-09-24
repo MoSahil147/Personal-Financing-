@@ -11,6 +11,7 @@ async function loadBuckets() {
     balance: Number(b.balance),
     percent: Number(b.percent),
     cap: b.cap == null ? null : Number(b.cap),
+    target: b.target == null ? null : Number(b.target),
   }));
 }
 
@@ -59,7 +60,7 @@ async function applyMoves(moves, { reason, entry_id = null, date = todayISO() })
   if (error) throw new Error(error.message);
 }
 
-// Salary tops rent up to 3,800 first; any other income is a plain % split.
+// Salary tops rent up to its monthly amount first; any other income is a plain % split.
 function splitFor(category, amount, boxes) {
   return category === 'Salary' ? math.computeSalarySplit(amount, boxes) : math.computeSplit(amount, boxes);
 }

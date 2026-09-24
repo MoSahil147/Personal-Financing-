@@ -2,9 +2,16 @@
 // rule from the budget plan (percentage splits, caps, month-end overflow)
 // can be tested directly with plain numbers.
 //
-// A "boxes" map looks like { rent: { key, balance, percent, cap }, ... }.
+// A "boxes" map looks like { rent: { key, balance, percent, cap, target }, ... }.
+// Every amount (percentages, limits, the rent amount) comes from the database -
+// nothing personal is hard-coded here.
 
-const RENT_AMOUNT = 3800;
+// The fixed monthly rent (buckets.target on the rent row). Without one, rent
+// is simply its percentage share of the incoming amount.
+function rentTarget(boxes, amount) {
+  const target = boxes.rent.target;
+  return target != null && target > 0 ? Number(target) : round2((amount * boxes.rent.percent) / 100);
+}
 
 const BUCKET_KEYS = [
   'rent', 'groceries', 'transport', 'guilt_free', 'home_trips', 'roaming',
@@ -15,7 +22,7 @@ const BUCKET_KEYS = [
 const PICKABLE_KEYS = BUCKET_KEYS.filter((k) => k !== 'buffer');
 
 // Fallback box for an expense when the chat parser's pick is missing/invalid.
-// The parser's own pick wins, since it knows Abu Dhabi vs outside and a
+// The parser's own pick wins, since it knows the home city vs elsewhere and a
 // regular outing vs a major one - a category alone can't tell those apart.
 const CATEGORY_BUCKETS = {
   Rent: 'rent',
@@ -59,9 +66,9 @@ function suggestBucket({ type, category, bucket }) {
 // Where a box's money goes when it would go over its limit.
 const OVERFLOW_TO = { roaming: 'emergency', home_trips: 'emergency', emergency: 'investing', buffer: 'emergency' };
 
-// Guilt-free's 1,000 is a carry-over limit: the new 500 is added on top and
-// only the extra above 1,000 moves at month-end (computeClose), so incoming
-// money never trims it.
+// Guilt-free's limit is a carry-over limit: the new share is added on top and
+// only the extra above the limit moves at month-end (computeClose), so
+// incoming money never trims it.
 const LIMIT_AT_MONTH_END_ONLY = ['guilt_free'];
 
 // Keeps every box at or under its limit as money comes in: whatever a box
@@ -99,8 +106,9 @@ function computeSplit(amount, boxes) {
   return fitToCaps(shares, boxes);
 }
 
-// Salary split: rent is topped up to 3,800 first (a box already holding 20
-// only gets 3,780), every other box gets its normal % of the salary, and
+// Salary split: rent is topped up to its monthly amount first (a box already
+// holding a little only gets the difference), every other box gets its normal
+// % of the salary, and
 // whatever rent didn't need goes buffer (to its cap) -> emergency (to its
 // cap) -> investing. If a smaller salary can't cover rent plus everyone's
 // share, the other boxes shrink in proportion - rent is never cut.
@@ -112,8 +120,9 @@ function computeSalarySplit(amount, boxes) {
   };
 
   // Never more than one month's rent: if this month's rent was already paid
-  // before the salary (box at -3,800), the salary covers that and stops there.
-  const topUp = round2(Math.min(amount, RENT_AMOUNT, Math.max(0, RENT_AMOUNT - boxes.rent.balance)));
+  // before the salary (box below zero), the salary covers that and stops there.
+  const rent = rentTarget(boxes, amount);
+  const topUp = round2(Math.min(amount, rent, Math.max(0, rent - boxes.rent.balance)));
   add('rent', topUp);
 
   const others = Object.entries(boxes).filter(([key, box]) => key !== 'rent' && box.percent > 0);
@@ -135,7 +144,7 @@ function computeSalarySplit(amount, boxes) {
 // percentages scaled up to 100%.
 function computeSetup(amount, boxes) {
   if (!(amount > 0)) return {};
-  const shares = { rent: round2(Math.min(amount, RENT_AMOUNT)) };
+  const shares = { rent: round2(Math.min(amount, rentTarget(boxes, amount))) };
   const rest = round2(amount - shares.rent);
   const others = Object.entries(boxes).filter(([key, box]) => key !== 'rent' && box.percent > 0);
   const weight = others.reduce((s, [, box]) => s + box.percent, 0);

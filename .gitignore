@@ -4,3 +4,7 @@ node_modules/
 !.env.example
 .DS_Store
 dist/
+
+# Personal budget numbers - kept on this computer only, never on GitHub
+docs/
+backend/test/
