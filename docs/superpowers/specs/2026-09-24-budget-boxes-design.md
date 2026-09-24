@@ -212,3 +212,15 @@ This replaces the calendar-based "Bridge period" and "Month-end close
 - At month-end, each box's extra over its own cap goes to Emergency, then
   Investing.
 - Migration: `backend/migrations/2026-09-25-separate-travel-caps.sql`.
+
+## Change (2026-09-25): limits apply as money comes in
+
+- Caps are now Home / Other Trips 7,500 and Roaming 2,500.
+- Every incoming split (salary and other income) keeps each box at or under
+  its limit. The share a box has no room for moves down its chain:
+  - Roaming and Home / Other Trips → Emergency → Investing
+  - Emergency → Investing
+  - Salary spare (rent's unused share) → Buffer → Emergency → Investing
+- Guilt-free's 1,000 is a carry-over limit. Incoming money isn't trimmed; only
+  the extra above 1,000 moves to Roaming at the month-end that the salary
+  triggers.

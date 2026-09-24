@@ -56,21 +56,47 @@ function suggestBucket({ type, category, bucket }) {
   return valid ? bucket : defaultBucketFor(category);
 }
 
-// Splits incoming money by each box's percent. Once emergency is full its
-// share goes to investing instead. Rounding leftovers land in investing so
-// the parts always add up to exactly `amount`.
+// Where a box's money goes when it would go over its limit.
+const OVERFLOW_TO = { roaming: 'emergency', home_trips: 'emergency', emergency: 'investing', buffer: 'emergency' };
+
+// Guilt-free's 1,000 is a carry-over limit: the new 500 is added on top and
+// only the extra above 1,000 moves at month-end (computeClose), so incoming
+// money never trims it.
+const LIMIT_AT_MONTH_END_ONLY = ['guilt_free'];
+
+// Keeps every box at or under its limit as money comes in: whatever a box
+// has no room for moves down its overflow chain (ending in investing).
+function fitToCaps(shares, boxes) {
+  const result = {};
+  const room = (key) => {
+    const box = boxes[key];
+    if (box.cap == null || LIMIT_AT_MONTH_END_ONLY.includes(key)) return Infinity;
+    return Math.max(0, box.cap - box.balance - (result[key] || 0));
+  };
+  for (const [start, amount] of Object.entries(shares)) {
+    let key = start;
+    let left = round2(amount);
+    while (left > 0) {
+      const x = round2(Math.min(left, room(key)));
+      if (x > 0) result[key] = round2((result[key] || 0) + x);
+      left = round2(left - x);
+      key = OVERFLOW_TO[key] || 'investing';
+    }
+    if (left < 0) result.investing = round2((result.investing || 0) + left);
+  }
+  return result;
+}
+
+// Splits incoming (non-salary) money by each box's percent, keeping every box
+// within its limit. Rounding leftovers land in investing so the parts always
+// add up to exactly `amount`.
 function computeSplit(amount, boxes) {
   const shares = {};
   for (const [key, box] of Object.entries(boxes)) {
     if (box.percent > 0) shares[key] = round2((amount * box.percent) / 100);
   }
-  const emergency = boxes.emergency;
-  if (shares.emergency && emergency.cap != null && emergency.balance >= emergency.cap) {
-    shares.investing = (shares.investing || 0) + shares.emergency;
-    delete shares.emergency;
-  }
   shares.investing = round2((shares.investing || 0) + amount - total(shares));
-  return shares;
+  return fitToCaps(shares, boxes);
 }
 
 // Salary split: rent is topped up to 3,800 first (a box already holding 20
@@ -92,26 +118,14 @@ function computeSalarySplit(amount, boxes) {
   const wanted = others.reduce((s, [, box]) => s + (amount * box.percent) / 100, 0);
   const rest = round2(amount - topUp);
   const scale = wanted > rest ? rest / wanted : 1;
-  const emergencyFull = boxes.emergency.cap != null && boxes.emergency.balance >= boxes.emergency.cap;
-  for (const [key, box] of others) {
-    const share = ((amount * box.percent) / 100) * scale;
-    add(key === 'emergency' && emergencyFull ? 'investing' : key, share);
-  }
+  for (const [key, box] of others) add(key, ((amount * box.percent) / 100) * scale);
 
-  let surplus = round2(amount - total(shares));
-  if (scale < 1 || surplus <= 0) {
-    add('investing', surplus); // just rounding pennies
-    return shares;
-  }
-  for (const key of ['buffer', 'emergency']) {
-    const box = boxes[key];
-    const room = Math.max(0, box.cap - box.balance - (shares[key] || 0));
-    const x = Math.min(surplus, room);
-    add(key, x);
-    surplus = round2(surplus - x);
-  }
-  add('investing', surplus);
-  return shares;
+  // Whatever rent didn't need starts at the buffer; fitToCaps then walks it
+  // (and any box that would go over its limit) down the chain.
+  const surplus = round2(amount - total(shares));
+  if (scale < 1 || surplus <= 0) add('investing', surplus); // just rounding pennies
+  else add('buffer', surplus);
+  return fitToCaps(shares, boxes);
 }
 
 // One-time starting allocation from the money already on hand: rent is

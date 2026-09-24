@@ -8,7 +8,7 @@ const {
 function boxes(balances = {}) {
   const defs = {
     rent: [38, null], groceries: [10, null], transport: [2, null], guilt_free: [5, 1000],
-    home_trips: [10, 7000], roaming: [5, 3000], emergency: [5, 15000], investing: [25, null],
+    home_trips: [10, 7500], roaming: [5, 2500], emergency: [5, 15000], investing: [25, null],
     buffer: [0, 300],
   };
   return Object.fromEntries(Object.entries(defs).map(([key, [percent, cap]]) => (
@@ -34,6 +34,36 @@ test('full emergency fund sends its share to investing (3,000)', () => {
 test('odd amounts still add up exactly', () => {
   const split = computeSplit(333.33, boxes());
   assert.equal(sum(split), 333.33);
+});
+
+test('other income: a box at its limit passes its share down the chain', () => {
+  const split = computeSplit(1000, boxes({ roaming: 2480, guilt_free: 1000 }));
+  // guilt-free's 1,000 is a carry-over limit (checked at month-end), so it
+  // keeps its 50; roaming only has room for 20, the other 30 goes to emergency
+  assert.equal(split.guilt_free, 50);
+  assert.equal(split.roaming, 20);
+  assert.equal(split.emergency, 50 + 30);
+  assert.equal(sum(split), 1000);
+});
+
+test('other income: home / other trips over its limit goes to emergency, then investing', () => {
+  const split = computeSplit(1000, boxes({ home_trips: 7450, emergency: 14990 }));
+  assert.equal(split.home_trips, 50);
+  assert.equal(split.emergency, 10);
+  assert.equal(split.investing, 250 + 40 + 50);
+  assert.equal(sum(split), 1000);
+});
+
+test('salary: roaming near its limit keeps it at the limit, extra to emergency', () => {
+  const split = computeSalarySplit(10000, boxes({ roaming: 2400 }));
+  assert.equal(split.roaming, 100);
+  assert.equal(split.emergency, 500 + 400);
+  assert.equal(sum(split), 10000);
+});
+
+test('salary: guilt-free still gets its 500 on top of the carry-over', () => {
+  const split = computeSalarySplit(10000, boxes({ guilt_free: 1000 }));
+  assert.equal(split.guilt_free, 500);
 });
 
 test('setup puts 3,800 in rent and splits the rest by 62 weights', () => {
@@ -69,23 +99,23 @@ test('buffer fills to 300 first, then emergency', () => {
   assert.equal(balances.emergency, 1150);
 });
 
-test('roaming over its own 3,000 cap sends only its extra to emergency', () => {
-  const { balances } = computeClose(boxes({ home_trips: 7000, roaming: 3900, emergency: 2000 }));
+test('roaming over its own 2,500 cap sends only its extra to emergency', () => {
+  const { balances } = computeClose(boxes({ home_trips: 7000, roaming: 3400, emergency: 2000 }));
   assert.equal(balances.home_trips, 7000);
-  assert.equal(balances.roaming, 3000);
+  assert.equal(balances.roaming, 2500);
   assert.equal(balances.emergency, 2900);
 });
 
-test('home / other trips over 7,000 overflows on its own, roaming untouched', () => {
-  const { balances } = computeClose(boxes({ home_trips: 7500, roaming: 1000, emergency: 2000 }));
-  assert.equal(balances.home_trips, 7000);
+test('home / other trips over 7,500 overflows on its own, roaming untouched', () => {
+  const { balances } = computeClose(boxes({ home_trips: 8000, roaming: 1000, emergency: 2000 }));
+  assert.equal(balances.home_trips, 7500);
   assert.equal(balances.roaming, 1000);
   assert.equal(balances.emergency, 2500);
 });
 
 test('a full roaming box does not spill into home / other trips', () => {
-  const { balances } = computeClose(boxes({ guilt_free: 1300, roaming: 3000, home_trips: 100, emergency: 0 }));
-  assert.equal(balances.roaming, 3000);
+  const { balances } = computeClose(boxes({ guilt_free: 1300, roaming: 2500, home_trips: 100, emergency: 0 }));
+  assert.equal(balances.roaming, 2500);
   assert.equal(balances.home_trips, 100);
   assert.equal(balances.emergency, 300);
 });

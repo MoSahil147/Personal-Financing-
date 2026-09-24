@@ -390,10 +390,13 @@ function boxName(key) {
   return state.boxes.find((b) => b.key === key)?.name || key;
 }
 
+// Guilt-free's limit only caps what carries over at month-end (the new 500 is
+// added on top), so it's labelled differently from the hard limits.
 function capBar(key, filled, cap) {
   const pct = Math.max(0, Math.min(100, (filled / cap) * 100));
+  const label = key === 'guilt_free' ? 'Carry-over limit' : 'Limit';
   return `<div class="box-cap-bar"><div style="width:${pct}%;background:${boxColor(key)}"></div></div>
-    <div class="box-cap-label">Limit ${fmt(cap)}</div>`;
+    <div class="box-cap-label">${label} ${fmt(cap)}</div>`;
 }
 
 async function refreshBoxes() {
