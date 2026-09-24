@@ -18,7 +18,7 @@ insert into buckets (key, name, sort) values
   ('groceries',  'Groceries',          2),
   ('transport',  'Transport',          3),
   ('guilt_free', 'Guilt-free',         4),
-  ('home_trips', 'Home / Other Trips', 5),
+  ('home_trips', 'Home Trips / Other Trips / Home Needs', 5),
   ('roaming',    'Roaming',            6),
   ('emergency',  'Emergency',          7),
   ('investing',  'Investing',          8),
