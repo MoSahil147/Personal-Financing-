@@ -68,6 +68,46 @@ router.put('/credit-card-limit', async (req, res) => {
   res.json(data);
 });
 
+// What the current card bill is made of: the most recent card spends that add
+// up to what's owed (payments clear the oldest spends first), grouped by
+// category, plus the spends themselves.
+router.get('/credit-card', async (_req, res) => {
+  try {
+    const owed = Number((await getSettings()).credit_outstanding);
+    if (owed <= 0) return res.json({ owed: 0, byCategory: [], entries: [] });
+
+    const { data, error } = await supabase
+      .from('entries')
+      .select('id, entry_date, amount, category, bucket, note')
+      .eq('type', 'expense')
+      .eq('payment_method', 'credit')
+      .order('entry_date', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(500);
+    if (error) throw new Error(error.message);
+
+    const entries = [];
+    let covered = 0;
+    for (const e of data) {
+      if (covered >= owed - 0.005) break;
+      entries.push(e);
+      covered += Number(e.amount);
+    }
+
+    const byCategory = {};
+    for (const e of entries) byCategory[e.category] = (byCategory[e.category] || 0) + Number(e.amount);
+    res.json({
+      owed,
+      byCategory: Object.entries(byCategory)
+        .map(([category, total]) => ({ category, total }))
+        .sort((a, b) => b.total - a.total),
+      entries,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Withdraw cash from the bank (e.g. an ATM withdrawal): moves money from
 // bank_balance to cash_balance. Not income or spending - a pure transfer.
 router.post('/withdraw-cash', async (req, res) => {

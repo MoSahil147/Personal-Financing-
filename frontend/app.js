@@ -79,6 +79,7 @@ const state = {
   boxSpent: {},
   boxPieMode: 'balances',
   boxPieChart: null,
+  ccPieChart: null,
 };
 
 // ---------- auth ----------
@@ -366,6 +367,7 @@ document.getElementById('settle-credit-btn').addEventListener('click', async () 
   try {
     await api('/api/settings/settle-credit-card', { method: 'POST' });
     refreshBalances();
+    loadSection(refreshCreditCard, 'credit card');
     refreshLedger();
     refreshMonthly();
   } catch (err) {
@@ -531,6 +533,33 @@ async function refreshBoxHistory() {
       <span>${fmt(m.amount)}</span>`;
     list.appendChild(li);
   }
+}
+
+// ---------- credit card ----------
+
+async function refreshCreditCard() {
+  const [cc, settings] = await Promise.all([api('/api/settings/credit-card'), api('/api/settings')]);
+  const limit = Number(settings.credit_card_limit) || 0;
+  document.getElementById('cc-owed').textContent = `${fmt(cc.owed)} AED`;
+  document.getElementById('cc-card').classList.toggle('over-limit', limit > 0 && cc.owed >= limit);
+  document.getElementById('cc-empty').hidden = cc.owed > 0;
+  document.getElementById('cc-details').hidden = !cc.entries.length;
+  document.getElementById('cc-pie-box').hidden = !cc.byCategory.length;
+  state.ccPieChart = renderPieChart('cc-pie-chart', state.ccPieChart, cc.byCategory);
+
+  document.getElementById('cc-by-category').innerHTML = cc.byCategory.map((c) => `
+    <div class="cc-row">
+      <span class="cc-dot" style="background:${colorForLabel(c.category)}"></span>
+      <span class="cc-cat">${escapeHtml(c.category)}</span>
+      <span>${fmt(c.total)}</span>
+    </div>`).join('');
+
+  document.getElementById('cc-list').innerHTML = cc.entries.map((e) => `
+    <li>
+      <span><strong>${escapeHtml(e.category)}</strong>
+        <span class="ledger-meta">${e.entry_date}${e.bucket ? ' · ' + escapeHtml(boxName(e.bucket)) + ' box' : ''}${e.note ? ' · ' + escapeHtml(e.note) : ''}</span></span>
+      <span>${fmt(e.amount)}</span>
+    </li>`).join('');
 }
 
 // ---------- alerts + monthly summary ----------
@@ -709,6 +738,7 @@ async function refreshLedger() {
       refreshMonthly();
       refreshBalances();
       loadSection(refreshBoxes, 'boxes');
+      loadSection(refreshCreditCard, 'credit card');
       if (state.view === 'yearly') loadSection(refreshYearly, 'yearly summary');
     });
   });
@@ -909,6 +939,7 @@ document.getElementById('confirm-save').addEventListener('click', async () => {
 
     refreshBalances();
     loadSection(refreshBoxes, 'boxes');
+    loadSection(refreshCreditCard, 'credit card');
     const entryMonth = Number(payload.entry_date.slice(5, 7));
     const entryYear = Number(payload.entry_date.slice(0, 4));
     if (entryMonth === state.month && entryYear === state.year) refreshMonthly();
@@ -936,6 +967,7 @@ function initApp() {
   loadSection(refreshReminders, 'reminders');
   loadSection(refreshBalances, 'balances');
   loadSection(refreshBoxes, 'boxes');
+  loadSection(refreshCreditCard, 'credit card');
   loadSection(refreshMonthly, 'monthly summary');
   loadSection(refreshLedger, 'ledger');
 }

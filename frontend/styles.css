@@ -377,6 +377,21 @@ canvas { max-width: 100%; }
 .box-pie-head { display: flex; margin: 16px 0 8px; }
 .box-pie-empty { color: var(--muted); font-size: 13px; text-align: center; padding: 8px 0; }
 
+.cc-owed { font-size: 13px; color: var(--muted); }
+.cc-owed strong { color: var(--accent); font-size: 16px; }
+#cc-card.over-limit .cc-owed strong { color: var(--danger); }
+.cc-note { margin: 6px 0 10px; font-size: 12px; color: var(--muted); }
+.cc-row { display: flex; align-items: center; gap: 8px; font-size: 14px; padding: 3px 0; }
+.cc-row .cc-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.cc-row .cc-cat { flex: 1; }
+#cc-pie-box { margin-bottom: 10px; }
+#cc-details { margin-top: 10px; }
+#cc-details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+#cc-list { list-style: none; padding: 0; margin: 8px 0 0; max-height: 280px; overflow-y: auto; }
+#cc-list li { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+#cc-list li:last-child { border-bottom: none; }
+#cc-list li > span:first-child { display: flex; flex-direction: column; min-width: 0; }
+
 #box-history { margin-top: 12px; }
 #box-history summary { cursor: pointer; color: var(--muted); font-size: 13px; }
 #box-history-list { list-style: none; padding: 0; margin: 8px 0 0; max-height: 280px; overflow-y: auto; }

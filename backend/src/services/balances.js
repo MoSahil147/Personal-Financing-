@@ -8,14 +8,18 @@ async function getSettings() {
 
 // Applies (sign=1) or reverses (sign=-1) the balance impact of an entries row.
 // Cash payments/income move the cash balance and never touch the bank -
-// credit expenses only move the "owed" total until settled - everything
-// else (debit expenses, bank income) moves the bank balance directly.
-async function applyEntryBalanceEffect({ type, amount, payment_method }, sign) {
+// credit expenses only move the "owed" total until settled - paying the card
+// bill moves money out of the bank AND cuts what's owed - everything else
+// (debit expenses, bank income) moves the bank balance directly.
+async function applyEntryBalanceEffect({ type, amount, payment_method, category }, sign) {
   const settings = await getSettings();
   const updates = {};
   const delta = sign * Number(amount);
 
-  if (payment_method === 'cash') {
+  if (type === 'expense' && category === 'Credit Card Payment' && payment_method !== 'credit') {
+    updates.bank_balance = Number(settings.bank_balance) - delta;
+    updates.credit_outstanding = Number(settings.credit_outstanding) - delta;
+  } else if (payment_method === 'cash') {
     updates.cash_balance = Number(settings.cash_balance) + (type === 'income' ? delta : -delta);
   } else if (type === 'income') {
     updates.bank_balance = Number(settings.bank_balance) + delta;

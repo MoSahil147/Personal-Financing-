@@ -1,6 +1,6 @@
 const express = require('express');
 const supabase = require('../services/supabase');
-const { applyEntryBalanceEffect } = require('../services/balances');
+const { applyEntryBalanceEffect, getSettings } = require('../services/balances');
 const buckets = require('../services/buckets');
 const { PICKABLE_KEYS } = require('../services/bucketMath');
 
@@ -9,7 +9,10 @@ const router = express.Router();
 // Save a confirmed entry (after the user reviews/edits the suggestion).
 router.post('/', async (req, res) => {
   const { entry_date, type, amount, category, classification, payment_method, note, raw_input } = req.body || {};
-  const bucket = req.body?.bucket || null;
+  // Paying the card bill always comes out of the bank (debit), never cash, and
+  // never touches the boxes - the boxes paid when the card was used.
+  const isCardPayment = type === 'expense' && category === 'Credit Card Payment';
+  const bucket = isCardPayment ? null : req.body?.bucket || null;
   // A salary starts a new month: run the month-end close before splitting it.
   const newMonth = type === 'income' && bucket === 'split' && req.body?.new_month === true;
 
@@ -19,12 +22,23 @@ router.post('/', async (req, res) => {
   if (!['income', 'expense'].includes(type)) {
     return res.status(400).json({ error: 'type must be income or expense' });
   }
-  const method = payment_method === 'cash' ? 'cash' : type === 'expense' ? payment_method || 'debit' : null;
+  const method = isCardPayment ? 'debit'
+    : payment_method === 'cash' ? 'cash' : type === 'expense' ? payment_method || 'debit' : null;
   if (type === 'expense' && !['debit', 'credit', 'cash'].includes(method)) {
     return res.status(400).json({ error: 'payment_method must be debit, credit, or cash' });
   }
   if (type === 'income' && method !== null && method !== 'cash') {
     return res.status(400).json({ error: 'income payment_method must be cash or omitted (bank)' });
+  }
+  if (isCardPayment) {
+    try {
+      const owed = Number((await getSettings()).credit_outstanding);
+      if (Number(amount) > owed + 0.005) {
+        return res.status(400).json({ error: `That's more than the ${owed.toFixed(2)} owed on the card` });
+      }
+    } catch (err) {
+      return res.status(500).json({ error: err.message });
+    }
   }
   // Expenses come out of one box; income is either split by % or goes into one box.
   const validBuckets = type === 'income' ? [...PICKABLE_KEYS, 'split'] : PICKABLE_KEYS;

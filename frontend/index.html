@@ -81,6 +81,21 @@
       </details>
     </div>
 
+    <div class="card" id="cc-card">
+      <div class="boxes-head">
+        <h2>Credit Card</h2>
+        <span class="cc-owed">Owed <strong id="cc-owed">-</strong></span>
+      </div>
+      <p class="cc-note">Card spends come out of their box straight away and add to what's owed. Your bank only goes down when you pay the bill.</p>
+      <div id="cc-empty" class="box-pie-empty" hidden>Nothing owed on the card.</div>
+      <div class="chart-box" id="cc-pie-box"><canvas id="cc-pie-chart"></canvas></div>
+      <div id="cc-by-category"></div>
+      <details id="cc-details" hidden>
+        <summary>Card spends in this bill</summary>
+        <ul id="cc-list"></ul>
+      </details>
+    </div>
+
     <div id="alerts" class="card"></div>
 
     <div class="card">
