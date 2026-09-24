@@ -477,8 +477,10 @@ function renderBoxPie() {
   if (state.boxPieChart) state.boxPieChart.destroy();
   state.boxPieChart = null;
 
+  // Buffer usage isn't extra spending - it covers a grocery/transport
+  // overspend already counted in those boxes - so it's left out here.
   const values = state.boxPieMode === 'spent'
-    ? state.boxes.map((b) => ({ b, v: state.boxSpent[b.key] || 0 }))
+    ? state.boxes.filter((b) => b.key !== 'buffer').map((b) => ({ b, v: state.boxSpent[b.key] || 0 }))
     : state.boxes.map((b) => ({ b, v: b.balance }));
   const slices = values.filter((x) => x.v > 0); // negative boxes can't be a pie slice
 
@@ -511,7 +513,7 @@ document.getElementById('box-pie-spent').addEventListener('click', () => setBoxP
 
 function moveReasonLabel(reason) {
   return {
-    setup: 'Starting split', income: 'Income split', refund: 'Refund', spend: 'Spent', close: 'Month end (salary)',
+    setup: 'Starting split', income: 'Income split', salary: 'Salary split', refund: 'Refund', spend: 'Spent', close: 'Month end (salary)',
   }[reason] || reason;
 }
 
@@ -895,6 +897,10 @@ document.getElementById('confirm-save').addEventListener('click', async () => {
     return;
   }
 
+  // Block a double tap from saving the same entry (e.g. a salary) twice.
+  const saveBtn = document.getElementById('confirm-save');
+  if (saveBtn.disabled) return;
+  saveBtn.disabled = true;
   try {
     const saved = await api('/api/entries', { method: 'POST', body: JSON.stringify(payload) });
     document.getElementById('confirm-modal').hidden = true;
@@ -910,6 +916,8 @@ document.getElementById('confirm-save').addEventListener('click', async () => {
     if (entryYear === state.year && state.view === 'yearly') loadSection(refreshYearly, 'yearly summary');
   } catch (err) {
     alert(err.message);
+  } finally {
+    saveBtn.disabled = false;
   }
 });
 

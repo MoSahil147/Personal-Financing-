@@ -96,7 +96,9 @@ async function applyEntry(entry, bucket, { newMonth = false } = {}) {
       await applyMoves(moves, { ...opts, reason: 'close' });
     }
     const shares = splitFor(entry.category, amount, toMap(await loadBuckets()));
-    return applyMoves(Object.entries(shares).map(([to, a]) => ({ to, amount: a })), { ...opts, reason: 'income' });
+    // 'salary' marks the split that starts a new month (always has moves,
+    // unlike the close, which can be empty when nothing is left over).
+    return applyMoves(Object.entries(shares).map(([to, a]) => ({ to, amount: a })), { ...opts, reason: newMonth ? 'salary' : 'income' });
   }
   return applyMoves([{ to: bucket, amount }], { ...opts, reason: entry.category === 'Refund' ? 'refund' : 'income' });
 }
@@ -137,17 +139,29 @@ async function splitPreview(amount, { category, newMonth }) {
   return planIncome(amount, category, newMonth, toMap(await loadBuckets()));
 }
 
-// The current "month" starts at the last salary month-end (or the starting
-// setup), not on the 1st - a new month begins when the salary arrives.
+// The current "month" starts when the last new-month salary was logged (or
+// at the starting setup), not on the 1st. It starts from that salary's
+// earliest move, so its month-end moves (e.g. buffer used) count too.
 async function monthStartedAt() {
   const { data, error } = await supabase
     .from('bucket_moves')
-    .select('created_at')
-    .in('reason', ['close', 'setup'])
+    .select('created_at, entry_id')
+    .in('reason', ['salary', 'close', 'setup'])
     .order('created_at', { ascending: false })
     .limit(1);
   if (error) throw new Error(error.message);
-  return data[0]?.created_at || null;
+  const latest = data[0];
+  if (!latest) return null;
+  if (!latest.entry_id) return latest.created_at;
+
+  const { data: first, error: firstErr } = await supabase
+    .from('bucket_moves')
+    .select('created_at')
+    .eq('entry_id', latest.entry_id)
+    .order('created_at', { ascending: true })
+    .limit(1);
+  if (firstErr) throw new Error(firstErr.message);
+  return first[0]?.created_at || latest.created_at;
 }
 
 // Total spent from each box since the current month started. The buffer is

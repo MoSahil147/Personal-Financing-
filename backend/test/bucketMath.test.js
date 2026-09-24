@@ -66,6 +66,21 @@ test('salary: guilt-free still gets its 500 on top of the carry-over', () => {
   assert.equal(split.guilt_free, 500);
 });
 
+test('rent paid before the salary: rent gets one month (3,800), not two', () => {
+  const split = computeSalarySplit(10000, boxes({ rent: -3800 }));
+  assert.equal(split.rent, 3800);
+  assert.equal(split.groceries, 1000);
+  assert.equal(split.investing, 2500);
+  assert.equal(sum(split), 10000);
+});
+
+test('setup keeps every box within its limit', () => {
+  const shares = computeSetup(60000, boxes());
+  assert.equal(shares.roaming, 2500);
+  assert.equal(shares.home_trips, 7500);
+  assert.equal(sum(shares), 60000);
+});
+
 test('setup puts 3,800 in rent and splits the rest by 62 weights', () => {
   const shares = computeSetup(10000, boxes());
   assert.equal(shares.rent, 3800);

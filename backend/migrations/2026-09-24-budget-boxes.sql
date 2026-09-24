@@ -29,7 +29,7 @@ create table if not exists bucket_moves (
   from_bucket text references buckets(key),   -- null = money coming in
   to_bucket text references buckets(key),     -- null = money going out
   amount numeric(12,2) not null check (amount > 0),
-  reason text not null,                       -- setup | income | refund | spend | close (month-end, run by a salary)
+  reason text not null,                       -- setup | income | salary | refund | spend | close (month-end, run by a salary)
   entry_id uuid references entries(id) on delete cascade,
   created_at timestamptz not null default now()
 );

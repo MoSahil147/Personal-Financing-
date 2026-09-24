@@ -111,7 +111,9 @@ function computeSalarySplit(amount, boxes) {
     if (x !== 0) shares[key] = round2((shares[key] || 0) + x);
   };
 
-  const topUp = round2(Math.min(amount, Math.max(0, RENT_AMOUNT - boxes.rent.balance)));
+  // Never more than one month's rent: if this month's rent was already paid
+  // before the salary (box at -3,800), the salary covers that and stops there.
+  const topUp = round2(Math.min(amount, RENT_AMOUNT, Math.max(0, RENT_AMOUNT - boxes.rent.balance)));
   add('rent', topUp);
 
   const others = Object.entries(boxes).filter(([key, box]) => key !== 'rent' && box.percent > 0);
@@ -141,7 +143,7 @@ function computeSetup(amount, boxes) {
 
   for (const [key, box] of others) shares[key] = round2((rest * box.percent) / weight);
   shares.investing = round2((shares.investing || 0) + amount - total(shares));
-  return shares;
+  return fitToCaps(shares, boxes);
 }
 
 // Month-end close, in the plan's order (section 12). Returns the new balances
