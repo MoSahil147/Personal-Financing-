@@ -428,9 +428,15 @@ async function refreshBoxes() {
 
   const buffer = state.boxes.find((b) => b.key === 'buffer');
   document.getElementById('buffer-strip').innerHTML = buffer
-    ? `<span>Buffer</span>
-       <span class="buffer-value ${buffer.balance < 0 ? 'bad' : ''}">${fmt(buffer.balance)} / ${fmt(buffer.cap)}</span>
-       <div class="box-cap-bar"><div style="width:${Math.max(0, Math.min(100, (buffer.balance / buffer.cap) * 100))}%;background:${boxColor('buffer')}"></div></div>`
+    ? `<div class="buffer-top">
+         <span>Buffer <span class="box-percent">leftovers</span></span>
+         <span class="buffer-value ${buffer.balance < 0 ? 'bad' : ''}">${fmt(buffer.balance)}</span>
+       </div>
+       <div class="box-cap-bar"><div style="width:${Math.max(0, Math.min(100, (buffer.balance / buffer.cap) * 100))}%;background:${boxColor('buffer')}"></div></div>
+       <div class="buffer-meta">
+         <span>Used this month: ${fmt(state.boxSpent.buffer || 0)}</span>
+         <span>Limit ${fmt(buffer.cap)}</span>
+       </div>`
     : '';
 
   renderBoxPie();
