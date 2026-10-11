@@ -382,7 +382,7 @@ function fmt(n) {
 }
 
 // Boxes get fixed colors by their position, so each box keeps the same color
-// on its card and in the pie (no hash collisions between the 9 boxes).
+// on its card and in the pie (no hash collisions between the boxes).
 function boxColor(key) {
   const i = state.boxes.findIndex((b) => b.key === key);
   return CHART_COLORS[Math.max(0, i) % CHART_COLORS.length];
@@ -479,7 +479,7 @@ function renderBoxPie() {
   if (state.boxPieChart) state.boxPieChart.destroy();
   state.boxPieChart = null;
 
-  // Buffer usage isn't extra spending - it covers a grocery/transport
+  // Buffer usage isn't extra spending - it covers a grocery/lunch/transport
   // overspend already counted in those boxes - so it's left out here.
   const values = state.boxPieMode === 'spent'
     ? state.boxes.filter((b) => b.key !== 'buffer').map((b) => ({ b, v: state.boxSpent[b.key] || 0 }))

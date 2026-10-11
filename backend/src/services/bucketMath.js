@@ -14,10 +14,10 @@ function rentTarget(boxes, amount) {
 }
 
 const BUCKET_KEYS = [
-  'rent', 'groceries', 'transport', 'guilt_free', 'home_trips', 'roaming',
-  'emergency', 'investing', 'buffer',
+  'rent', 'groceries', 'office_lunch', 'transport', 'guilt_free', 'home_trips',
+  'roaming', 'emergency', 'investing', 'buffer',
 ];
-// The buffer is only fed by leftovers (grocery/transport at month end, rent's
+// The buffer is only fed by leftovers (grocery/lunch/transport at month end, rent's
 // unused salary share), so it's never picked by hand for a spend or refund.
 const PICKABLE_KEYS = BUCKET_KEYS.filter((k) => k !== 'buffer');
 
@@ -182,14 +182,16 @@ function computeClose(boxes) {
     });
   };
 
-  // 1. Groceries + transport start fresh: net them against each other, sweep
-  //    leftovers down buffer -> emergency -> investing, and cover overspending
-  //    from the buffer first, then emergency (never investing).
-  const pair = ['groceries', 'transport'];
-  const [g, t] = pair;
-  if (bal[g] < 0 && bal[t] > 0) move(t, g, Math.min(bal[t], -bal[g]));
-  if (bal[t] < 0 && bal[g] > 0) move(g, t, Math.min(bal[g], -bal[t]));
-  for (const key of pair) {
+  // 1. Groceries, office lunch + transport start fresh: net them against each
+  //    other, sweep leftovers down buffer -> emergency -> investing, and cover
+  //    overspending from the buffer first, then emergency (never investing).
+  const fresh = ['groceries', 'office_lunch', 'transport'].filter((key) => key in bal);
+  for (const short of fresh) {
+    for (const spare of fresh) {
+      if (bal[short] < 0 && bal[spare] > 0) move(spare, short, Math.min(bal[spare], -bal[short]));
+    }
+  }
+  for (const key of fresh) {
     if (bal[key] > 0) {
       pour(key, bal[key], ['buffer', 'emergency', 'investing']);
     } else if (bal[key] < 0) {

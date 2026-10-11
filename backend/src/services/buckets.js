@@ -167,7 +167,7 @@ async function monthStartedAt() {
 
 // Total spent from each box since the current month started. The buffer is
 // never spent directly - its "spent" is what the month-end took out of it to
-// cover a grocery/transport overspend.
+// cover a grocery/lunch/transport overspend.
 async function spentThisMonth() {
   const since = await monthStartedAt();
   let query = supabase.from('bucket_moves').select('from_bucket, amount, reason').in('reason', ['spend', 'close']);
