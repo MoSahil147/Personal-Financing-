@@ -2,6 +2,7 @@ const express = require('express');
 const supabase = require('../services/supabase');
 const { applyEntryBalanceEffect, getSettings } = require('../services/balances');
 const buckets = require('../services/buckets');
+const purses = require('../services/purses');
 const { PICKABLE_KEYS } = require('../services/bucketMath');
 
 const router = express.Router();
@@ -15,6 +16,8 @@ router.post('/', async (req, res) => {
   const bucket = isCardPayment ? null : req.body?.bucket || null;
   // A salary starts a new month: run the month-end close before splitting it.
   const newMonth = type === 'income' && bucket === 'split' && req.body?.new_month === true;
+  // Topping up a prepaid card (e.g. a bus card) is spending that also adds to the card.
+  const purseId = type === 'expense' && !isCardPayment ? req.body?.purse_id || null : null;
 
   if (!entry_date || !type || !amount || !category) {
     return res.status(400).json({ error: 'entry_date, type, amount, category are required' });
@@ -58,6 +61,8 @@ router.post('/', async (req, res) => {
       note,
       raw_input,
       bucket,
+      // Only sent when set, so entries still save before the purses migration has run.
+      ...(purseId ? { purse_id: purseId } : {}),
     })
     .select()
     .single();
@@ -75,6 +80,12 @@ router.post('/', async (req, res) => {
     await buckets.applyEntry(data, bucket, { newMonth });
   } catch (err) {
     return res.status(207).json({ ...data, bucket_warning: err.message });
+  }
+
+  try {
+    await purses.applyEntry(data);
+  } catch (err) {
+    return res.status(207).json({ ...data, bucket_warning: `Card not topped up: ${err.message}` });
   }
 
   res.status(201).json(data);
@@ -108,8 +119,10 @@ router.delete('/:id', async (req, res) => {
 
   // Read the box moves before deleting - the delete cascades them away.
   let boxMoves;
+  let purseMoves;
   try {
     boxMoves = await buckets.getEntryMoves(req.params.id);
+    purseMoves = await purses.getEntryMoves(req.params.id);
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
@@ -125,6 +138,7 @@ router.delete('/:id', async (req, res) => {
 
   try {
     await buckets.reverseMoves(boxMoves);
+    await purses.reverseMoves(purseMoves);
   } catch (err) {
     return res.status(207).json({ deleted: true, bucket_warning: err.message });
   }

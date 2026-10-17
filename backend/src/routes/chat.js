@@ -2,6 +2,7 @@ const express = require('express');
 const supabase = require('../services/supabase');
 const { classifyChat } = require('../services/groq');
 const { suggestBucket } = require('../services/bucketMath');
+const purses = require('../services/purses');
 
 const router = express.Router();
 
@@ -18,7 +19,10 @@ router.post('/', async (req, res) => {
   try {
     const { data: activeReminders } = await supabase.from('reminders').select('id, text').eq('done', false);
 
-    const result = await classifyChat(text, { activeReminders: activeReminders || [] });
+    // Cards are optional: if the purses table isn't there yet, chat still works.
+    const cards = await purses.listPurses().catch(() => []);
+
+    const result = await classifyChat(text, { activeReminders: activeReminders || [], purses: cards });
 
     if (result.intent === 'add_reminder') {
       const reminderText = result.reminder_text || text;
@@ -46,7 +50,13 @@ router.post('/', async (req, res) => {
     }
 
     if (result.intent === 'log_entry') {
-      if (result.entry) result.entry.bucket = suggestBucket(result.entry);
+      if (result.entry) {
+        // A card top-up comes out of the Transport box unless the user said otherwise.
+        const card = result.entry.purse && result.entry.type === 'expense' ? purses.matchPurse(cards, result.entry.purse) : null;
+        result.entry.purse_id = card?.id || null;
+        if (card && !result.entry.bucket) result.entry.bucket = 'transport';
+        result.entry.bucket = suggestBucket(result.entry);
+      }
       return res.json({ intent: 'log_entry', suggestion: result.entry, raw_input: text });
     }
 
@@ -55,6 +65,12 @@ router.post('/', async (req, res) => {
         return res.json({ intent: 'chat', reply: "Couldn't tell how much you withdrew - try again with an amount." });
       }
       return res.json({ intent: 'cash_withdrawal', amount: result.withdrawal_amount });
+    }
+
+    if (result.intent === 'card_ride') {
+      if (!cards.length) return res.json({ intent: 'chat', reply: 'No cards set up yet.' });
+      const card = purses.matchPurse(cards, result.purse);
+      return res.json({ intent: 'card_ride', purse_id: card?.id || null, amount: result.ride_amount || null, note: result.reply || null });
     }
 
     res.json({ intent: 'chat', reply: result.reply || "Not sure what you meant - try logging an amount or adding/removing a reminder." });

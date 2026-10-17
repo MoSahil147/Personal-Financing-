@@ -295,7 +295,7 @@ canvas { max-width: 100%; }
   font-size: 15px;
 }
 
-#confirm-modal {
+#confirm-modal, .modal {
   position: fixed;
   inset: 0;
   background: rgba(0,0,0,0.6);
@@ -305,7 +305,7 @@ canvas { max-width: 100%; }
   padding: 16px;
   z-index: 10;
 }
-#confirm-box {
+#confirm-box, .modal-box {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -315,9 +315,9 @@ canvas { max-width: 100%; }
   max-height: calc(100vh - 32px);
   overflow-y: auto;
 }
-#confirm-box h3 { margin: 0 0 14px; font-size: 15px; }
-#confirm-box label { display: block; font-size: 12px; color: var(--muted); margin-top: 10px; margin-bottom: 4px; }
-#confirm-box input, #confirm-box select {
+#confirm-box h3, .modal-box h3 { margin: 0 0 14px; font-size: 15px; }
+#confirm-box label, .modal-box label { display: block; font-size: 12px; color: var(--muted); margin-top: 10px; margin-bottom: 4px; }
+#confirm-box input, #confirm-box select, .modal-box input, .modal-box select {
   width: 100%;
   padding: 8px 10px;
   border-radius: 8px;
@@ -325,8 +325,8 @@ canvas { max-width: 100%; }
   background: #0d0f14;
   color: var(--text);
 }
-#confirm-actions { display: flex; gap: 8px; margin-top: 16px; }
-#confirm-actions button {
+#confirm-actions, .modal-actions { display: flex; gap: 8px; margin-top: 16px; }
+#confirm-actions button, .modal-actions button {
   flex: 1;
   padding: 10px;
   border-radius: 8px;
@@ -334,8 +334,8 @@ canvas { max-width: 100%; }
   cursor: pointer;
   font-size: 14px;
 }
-#confirm-save { background: var(--accent); color: white; }
-#confirm-cancel { background: #0d0f14; color: var(--text); border: 1px solid var(--border) !important; }
+#confirm-save, .btn-primary { background: var(--accent); color: white; }
+#confirm-cancel, .btn-secondary { background: #0d0f14; color: var(--text); border: 1px solid var(--border) !important; }
 
 #confirm-box .confirm-check { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: var(--text); margin-top: 8px; cursor: pointer; }
 #confirm-box .confirm-check input { width: auto; margin: 2px 0 0; padding: 0; flex: none; }
@@ -426,3 +426,35 @@ canvas { max-width: 100%; }
 .box-detail-list li > span:first-child { display: flex; flex-direction: column; min-width: 0; }
 .box-detail-list .bad { color: var(--danger); }
 .box-detail-list .good { color: var(--good); }
+
+/* ---------- bus cards ---------- */
+#purses-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+.purse-tile { background: #0d0f14; border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 10px; padding: 10px 12px; cursor: pointer; min-width: 0; }
+.purse-tile.open { outline: 1px solid var(--accent); }
+.purse-top { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+.purse-name { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.purse-balance { font-size: 20px; font-weight: 600; margin: 2px 0 8px; }
+.purse-balance small { font-size: 12px; color: var(--muted); font-weight: 400; }
+.purse-actions { display: flex; gap: 6px; }
+.purse-actions button { flex: 1; padding: 8px 6px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); color: var(--text); font-size: 13px; cursor: pointer; }
+.purse-actions button.primary { background: var(--accent); border-color: var(--accent); color: white; }
+.purses-empty { color: var(--muted); font-size: 13px; }
+#purse-detail { margin-top: 10px; background: #0d0f14; border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 10px; padding: 10px 12px; }
+
+/* ---------- excel export ---------- */
+.ledger-head { margin-bottom: 10px; }
+.ledger-head h2 { margin: 0; }
+.export-btn { padding: 6px 12px; border-radius: 8px; border: 1px solid var(--good); background: rgba(79, 191, 122, 0.12); color: var(--good); font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.export-btn:hover { background: rgba(79, 191, 122, 0.22); }
+.export-pickers { display: flex; gap: 8px; }
+.export-pickers select { flex: 1; }
+.btn-primary:disabled { opacity: 0.6; cursor: progress; }
+
+@media (max-width: 480px) {
+  #purses-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .purse-tile { padding: 10px; }
+  .purse-balance { font-size: 18px; }
+  .purse-actions { flex-direction: column; }
+  .modal, #confirm-modal { align-items: flex-end; padding: 0; }
+  .modal-box, #confirm-box { max-width: none; border-radius: 14px 14px 0 0; padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px)); max-height: 90vh; }
+}

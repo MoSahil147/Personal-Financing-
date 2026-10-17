@@ -81,6 +81,8 @@ const state = {
   boxPieChart: null,
   ccPieChart: null,
   openBox: null, // box whose activity is shown below the grid
+  purses: [],
+  openPurse: null, // card whose history is shown below the cards
 };
 
 // ---------- auth ----------
@@ -592,6 +594,195 @@ async function refreshBoxHistory() {
   }
 }
 
+// ---------- bus cards (prepaid purses) ----------
+
+function purseName(id) {
+  return state.purses.find((p) => p.id === id)?.name || 'card';
+}
+
+// The cards are optional (they need their own migration), so a failed load
+// just hides the section instead of showing the connection banner.
+async function refreshPurses() {
+  const section = document.getElementById('purses-card');
+  try {
+    state.purses = (await api('/api/purses')).map((p) => ({ ...p, balance: Number(p.balance) }));
+  } catch {
+    state.purses = [];
+    section.hidden = true;
+    return;
+  }
+  section.hidden = !state.purses.length;
+  document.getElementById('purses-total').textContent =
+    `${fmt(state.purses.reduce((sum, p) => sum + p.balance, 0))} AED`;
+
+  const grid = document.getElementById('purses-grid');
+  grid.innerHTML = '';
+  for (const p of state.purses) {
+    const tile = document.createElement('div');
+    tile.className = 'purse-tile';
+    tile.classList.toggle('open', state.openPurse === p.id);
+    tile.innerHTML = `
+      <div class="purse-top">
+        <span class="purse-name">${escapeHtml(p.name)}</span>
+      </div>
+      <div class="purse-balance">${fmt(p.balance)} <small>AED</small></div>
+      <div class="purse-actions">
+        <button type="button" class="primary" data-act="topup">Top up</button>
+        <button type="button" data-act="ride">Fare / fix</button>
+      </div>`;
+    tile.addEventListener('click', (e) => {
+      const act = e.target.closest('button')?.dataset.act;
+      if (act === 'topup') openTopUp(p);
+      else if (act === 'ride') openCardModal(p.id, 'ride');
+      else togglePurseDetail(p.id);
+    });
+    grid.appendChild(tile);
+  }
+  await renderPurseDetail();
+}
+
+// A top-up is a normal expense (bank/cash + Transport box) that also adds to the card.
+function openTopUp(purse) {
+  openConfirmModal({
+    type: 'expense',
+    amount: null,
+    category: 'Transport',
+    classification: 'need',
+    payment_method: 'debit',
+    bucket: 'transport',
+    purse_id: purse.id,
+    note: `Top up ${purse.name}`,
+  }, null);
+  document.getElementById('confirm-amount').focus();
+}
+
+function togglePurseDetail(id) {
+  state.openPurse = state.openPurse === id ? null : id;
+  document.querySelectorAll('#purses-grid .purse-tile').forEach((tile, i) => {
+    tile.classList.toggle('open', state.purses[i]?.id === state.openPurse);
+  });
+  loadSection(renderPurseDetail, 'card history');
+}
+
+function purseReasonLabel(reason) {
+  return { topup: 'Top up', ride: 'Fare', adjust: 'Balance fixed' }[reason] || reason;
+}
+
+async function renderPurseDetail() {
+  const el = document.getElementById('purse-detail');
+  const id = state.openPurse;
+  el.hidden = !id || !state.purses.some((p) => p.id === id);
+  if (el.hidden) return;
+  el.innerHTML = `<div class="box-detail-head"><strong>${escapeHtml(purseName(id))}</strong><span class="ledger-meta">Loading…</span></div>`;
+
+  const moves = await api(`/api/purses/${encodeURIComponent(id)}/moves`);
+  if (state.openPurse !== id) return;
+  const rows = moves.map((m) => {
+    const amt = Number(m.amount);
+    const meta = m.note ? `${m.move_date} · ${m.note}` : m.move_date;
+    return `<li>
+      <span><strong>${escapeHtml(purseReasonLabel(m.reason))}</strong><span class="ledger-meta">${escapeHtml(meta)}</span></span>
+      <span class="${amt < 0 ? 'bad' : 'good'}">${amt < 0 ? '−' : '+'}${fmt(Math.abs(amt))}</span>
+    </li>`;
+  });
+  el.innerHTML = `
+    <div class="box-detail-head"><strong>${escapeHtml(purseName(id))}</strong><span class="ledger-meta">Last ${moves.length} moves</span></div>
+    <ul class="box-detail-list">${rows.join('') || '<li><span class="ledger-meta">Nothing on this card yet.</span></li>'}</ul>`;
+}
+
+// Fare paid with a card, or the balance fixed to what the card reader shows.
+function openCardModal(purseId, mode, { amount = null, note = '' } = {}) {
+  const select = document.getElementById('card-modal-purse');
+  select.innerHTML = state.purses.map((p) => `<option value="${p.id}">${escapeHtml(p.name)} (${fmt(p.balance)})</option>`).join('');
+  if (purseId) select.value = purseId;
+  document.getElementById('card-modal-mode').value = mode;
+  document.getElementById('card-modal-amount').value = amount ?? '';
+  document.getElementById('card-modal-note').value = note || '';
+  updateCardModal();
+  document.getElementById('card-modal').hidden = false;
+}
+
+function updateCardModal() {
+  const purse = state.purses.find((p) => p.id === document.getElementById('card-modal-purse').value);
+  const mode = document.getElementById('card-modal-mode').value;
+  const amount = Number(document.getElementById('card-modal-amount').value) || 0;
+  document.getElementById('card-modal-amount-label').textContent = mode === 'ride' ? 'Fare' : 'Balance the card shows';
+  document.getElementById('card-modal-note-row').hidden = mode !== 'ride';
+  const hint = document.getElementById('card-modal-hint');
+  if (!purse) { hint.textContent = ''; return; }
+  if (mode === 'ride') {
+    const after = purse.balance - amount;
+    hint.innerHTML = `Comes off the card only - your bank and boxes don't change (they paid at the top-up). Card: ${fmt(purse.balance)} → <strong>${fmt(after)}</strong>`
+      + (after < 0 ? ' <span class="bad">That\'s more than the card has.</span>' : '');
+  } else {
+    hint.innerHTML = `Card: ${fmt(purse.balance)} → <strong>${fmt(amount)}</strong>. Use this if the card and the app don't match.`;
+  }
+}
+
+['card-modal-purse', 'card-modal-mode'].forEach((id) => document.getElementById(id).addEventListener('change', updateCardModal));
+document.getElementById('card-modal-amount').addEventListener('input', updateCardModal);
+document.getElementById('card-modal-cancel').addEventListener('click', () => { document.getElementById('card-modal').hidden = true; });
+
+document.getElementById('card-modal-save').addEventListener('click', async () => {
+  const id = document.getElementById('card-modal-purse').value;
+  const mode = document.getElementById('card-modal-mode').value;
+  const raw = document.getElementById('card-modal-amount').value;
+  const amount = Number(raw);
+  if (raw === '' || !(mode === 'ride' ? amount > 0 : amount >= 0)) {
+    alert(mode === 'ride' ? 'Enter the fare.' : 'Enter the balance the card shows.');
+    return;
+  }
+  const btn = document.getElementById('card-modal-save');
+  if (btn.disabled) return;
+  btn.disabled = true;
+  try {
+    if (mode === 'ride') {
+      const note = document.getElementById('card-modal-note').value.trim();
+      await api(`/api/purses/${id}/ride`, { method: 'POST', body: JSON.stringify({ amount, note: note || null, date: todayISO() }) });
+    } else {
+      await api(`/api/purses/${id}`, { method: 'PATCH', body: JSON.stringify({ balance: amount }) });
+    }
+    document.getElementById('card-modal').hidden = true;
+    loadSection(refreshPurses, 'bus cards');
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// Card picker in the confirm modal: only for expenses, and only once cards exist.
+function updatePurseOptions(selected) {
+  const isExpense = document.getElementById('confirm-type').value === 'expense';
+  const row = document.getElementById('confirm-purse-row');
+  const select = document.getElementById('confirm-purse');
+  row.hidden = !isExpense || !state.purses.length;
+  select.innerHTML = '<option value="">No - not a card top-up</option>'
+    + state.purses.map((p) => `<option value="${p.id}">${escapeHtml(p.name)} (${fmt(p.balance)})</option>`).join('');
+  select.value = !row.hidden && state.purses.some((p) => p.id === selected) ? selected : '';
+  updatePurseHint();
+}
+
+function updatePurseHint() {
+  const hint = document.getElementById('confirm-purse-hint');
+  const purse = state.purses.find((p) => p.id === document.getElementById('confirm-purse').value);
+  const amount = Number(document.getElementById('confirm-amount').value) || 0;
+  hint.innerHTML = purse
+    ? `Adds ${fmt(amount)} to <strong>${escapeHtml(purse.name)}</strong>: ${fmt(purse.balance)} → <strong>${fmt(purse.balance + amount)}</strong>`
+    : '';
+}
+
+document.getElementById('confirm-purse').addEventListener('change', () => {
+  // A top-up comes out of the Transport box by default.
+  if (document.getElementById('confirm-purse').value) {
+    document.getElementById('confirm-bucket').value = 'transport';
+    if (categorySelect.value === 'Other') categorySelect.value = 'Transport';
+    updateBucketHint();
+  }
+  updatePurseHint();
+});
+document.getElementById('confirm-amount').addEventListener('input', updatePurseHint);
+
 // ---------- credit card ----------
 
 async function refreshCreditCard() {
@@ -780,7 +971,7 @@ async function refreshLedger() {
     li.innerHTML = `
       <span>
         <strong>${escapeHtml(e.category)}</strong>
-        <span class="ledger-meta">${e.entry_date}${e.classification ? ' · ' + e.classification : ''}${e.payment_method ? ' · ' + e.payment_method : ''}</span>
+        <span class="ledger-meta">${e.entry_date}${e.classification ? ' · ' + e.classification : ''}${e.payment_method ? ' · ' + e.payment_method : ''}${e.purse_id ? ' · bus card top-up' : ''}</span>
       </span>
       <span>
         <span class="ledger-amount ${e.type}">${e.type === 'income' ? '+' : '-'}${Number(e.amount).toFixed(2)}</span>
@@ -796,6 +987,7 @@ async function refreshLedger() {
       refreshBalances();
       loadSection(refreshBoxes, 'boxes');
       loadSection(refreshCreditCard, 'credit card');
+      loadSection(refreshPurses, 'bus cards');
       if (state.view === 'yearly') loadSection(refreshYearly, 'yearly summary');
     });
   });
@@ -824,6 +1016,8 @@ async function sendChat() {
         await api('/api/settings/withdraw-cash', { method: 'POST', body: JSON.stringify({ amount: result.amount }) });
         refreshBalances();
       }
+    } else if (result.intent === 'card_ride') {
+      openCardModal(result.purse_id, 'ride', { amount: result.amount });
     } else if (result.intent === 'add_reminder') {
       refreshReminders();
     } else if (result.intent === 'remove_reminder') {
@@ -860,6 +1054,7 @@ function updatePaymentMethodOptions() {
 document.getElementById('confirm-type').addEventListener('change', () => {
   updatePaymentMethodOptions();
   updateBucketOptions(undefined);
+  updatePurseOptions(document.getElementById('confirm-purse').value);
 });
 
 // Box picker in the confirm modal. The parser's pick is pre-selected and the
@@ -955,6 +1150,7 @@ function openConfirmModal(suggestion, raw_input) {
   document.getElementById('confirm-date').value = suggestion.date || todayISO();
   document.getElementById('confirm-note').value = suggestion.note || '';
   updateBucketOptions(suggestion.bucket);
+  updatePurseOptions(suggestion.purse_id || '');
   document.getElementById('confirm-modal').hidden = false;
 }
 
@@ -977,6 +1173,7 @@ document.getElementById('confirm-save').addEventListener('click', async () => {
     bucket: document.getElementById('confirm-bucket').value || null,
     new_month: !document.getElementById('confirm-new-month-row').hidden
       && document.getElementById('confirm-new-month').checked,
+    purse_id: (!document.getElementById('confirm-purse-row').hidden && document.getElementById('confirm-purse').value) || null,
   };
 
   if (!payload.amount || !payload.category || !payload.entry_date) {
@@ -997,6 +1194,7 @@ document.getElementById('confirm-save').addEventListener('click', async () => {
     refreshBalances();
     loadSection(refreshBoxes, 'boxes');
     loadSection(refreshCreditCard, 'credit card');
+    if (payload.purse_id) loadSection(refreshPurses, 'bus cards');
     const entryMonth = Number(payload.entry_date.slice(5, 7));
     const entryYear = Number(payload.entry_date.slice(0, 4));
     if (entryMonth === state.month && entryYear === state.year) refreshMonthly();
@@ -1008,6 +1206,441 @@ document.getElementById('confirm-save').addEventListener('click', async () => {
     saveBtn.disabled = false;
   }
 });
+
+// ---------- excel export ----------
+
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const EXCELJS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
+
+// ExcelJS is big, so it's only loaded the first time a sheet is made.
+let excelJsLoading = null;
+function loadExcelJs() {
+  if (window.ExcelJS) return Promise.resolve(window.ExcelJS);
+  excelJsLoading ||= new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = EXCELJS_URL;
+    script.onload = () => resolve(window.ExcelJS);
+    script.onerror = () => { excelJsLoading = null; reject(new Error("Couldn't load the Excel library - check your connection.")); };
+    document.head.appendChild(script);
+  });
+  return excelJsLoading;
+}
+
+function openExportModal() {
+  const monthSel = document.getElementById('export-month');
+  const yearSel = document.getElementById('export-year');
+  const now = new Date();
+  monthSel.innerHTML = MONTH_NAMES.map((m, i) => `<option value="${i + 1}">${m}</option>`).join('');
+  const years = [];
+  for (let y = 2026; y <= now.getFullYear() + 1; y++) years.push(y);
+  yearSel.innerHTML = years.map((y) => `<option value="${y}">${y}</option>`).join('');
+  // Starts on the month being viewed (the current month unless you changed it).
+  monthSel.value = state.month;
+  yearSel.value = years.includes(state.year) ? state.year : now.getFullYear();
+  updateExportHint();
+  document.getElementById('export-modal').hidden = false;
+}
+
+// How much of the month the sheet covers: all of it, or up to today.
+function exportPeriod(year, month) {
+  const now = new Date();
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const isCurrent = year === now.getFullYear() && month === now.getMonth() + 1;
+  const isFuture = year > now.getFullYear() || (year === now.getFullYear() && month > now.getMonth() + 1);
+  return { daysInMonth, isCurrent, isFuture, lastDay: isCurrent ? now.getDate() : daysInMonth };
+}
+
+function updateExportHint() {
+  const year = Number(document.getElementById('export-year').value);
+  const month = Number(document.getElementById('export-month').value);
+  const p = exportPeriod(year, month);
+  const name = MONTH_NAMES[month - 1];
+  document.getElementById('export-hint').innerHTML = p.isCurrent
+    ? `${name} isn't over yet - the sheet will have everything so far (1–${p.lastDay} ${name.slice(0, 3)}).`
+    : p.isFuture ? `${name} ${year} hasn't started yet, so the sheet will be empty.`
+      : `The whole of ${name} ${year}.`;
+}
+
+document.getElementById('export-btn').addEventListener('click', openExportModal);
+document.getElementById('export-month').addEventListener('change', updateExportHint);
+document.getElementById('export-year').addEventListener('change', updateExportHint);
+document.getElementById('export-cancel').addEventListener('click', () => { document.getElementById('export-modal').hidden = true; });
+
+document.getElementById('export-go').addEventListener('click', async () => {
+  const btn = document.getElementById('export-go');
+  if (btn.disabled) return;
+  const year = Number(document.getElementById('export-year').value);
+  const month = Number(document.getElementById('export-month').value);
+  btn.disabled = true;
+  btn.textContent = 'Making your sheet…';
+  try {
+    const [ExcelJS, data] = await Promise.all([loadExcelJs(), api(`/api/summary/export?year=${year}&month=${month}`)]);
+    const workbook = buildMonthWorkbook(ExcelJS, data);
+    const buffer = await workbook.xlsx.writeBuffer();
+    const p = exportPeriod(year, month);
+    downloadFile(
+      new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+      `Finance-${year}-${String(month).padStart(2, '0')}-${MONTH_NAMES[month - 1]}${p.isCurrent ? '-so-far' : ''}.xlsx`,
+    );
+    document.getElementById('export-modal').hidden = true;
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Download';
+  }
+});
+
+function downloadFile(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+const XL = {
+  navy: 'FF1F3A5F', white: 'FFFFFFFF', zebra: 'FFF4F6FA', section: 'FFE8EEF7',
+  green: 'FF1E7B45', red: 'FFB3261E', muted: 'FF6B7280', line: 'FFD9DEE7',
+};
+const XL_MONEY = '#,##0.00;[Red]-#,##0.00';
+const XL_PCT = '0.0%';
+const XL_DATE = 'ddd dd mmm yyyy';
+
+function paidWithLabel(e) {
+  if (e.payment_method === 'cash') return 'Cash';
+  if (e.type === 'income') return 'Bank';
+  if (e.payment_method === 'credit') return 'Credit card';
+  return 'Bank (debit)';
+}
+
+// Excel dates are stored without a timezone; building them in UTC keeps
+// "2026-10-17" from turning into the 16th.
+function xlDate(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d));
+}
+
+function xlHeader(row) {
+  row.eachCell((cell) => {
+    cell.font = { bold: true, color: { argb: XL.white } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: XL.navy } };
+    cell.alignment = { vertical: 'middle', wrapText: true };
+  });
+  row.height = 20;
+}
+
+function xlZebra(row, index) {
+  row.eachCell({ includeEmpty: true }, (cell) => {
+    if (index % 2) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: XL.zebra } };
+    cell.border = { bottom: { style: 'thin', color: { argb: XL.line } } };
+  });
+}
+
+function xlTotal(row) {
+  row.eachCell({ includeEmpty: true }, (cell) => {
+    cell.font = { bold: true };
+    cell.border = { top: { style: 'thin' }, bottom: { style: 'double' } };
+  });
+}
+
+// A titled block of rows on the Summary sheet; returns the next free row.
+// `rows` are arrays of [label, value, ...]; `formats` gives each column's numFmt.
+function xlSection(ws, at, title, headers, rows, formats = [], { total } = {}) {
+  const titleCell = ws.getCell(at, 1);
+  titleCell.value = title;
+  titleCell.font = { bold: true, size: 12, color: { argb: XL.navy } };
+  at += 1;
+  headers.forEach((h, i) => { ws.getCell(at, i + 1).value = h; });
+  xlHeader(ws.getRow(at));
+  const first = at + 1;
+  rows.forEach((r, i) => {
+    const row = ws.getRow(first + i);
+    r.forEach((v, c) => {
+      const cell = row.getCell(c + 1);
+      cell.value = v;
+      if (formats[c]) cell.numFmt = formats[c];
+    });
+    xlZebra(row, i);
+  });
+  let next = first + rows.length;
+  if (!rows.length) {
+    ws.getCell(next, 1).value = 'Nothing yet';
+    ws.getCell(next, 1).font = { italic: true, color: { argb: XL.muted } };
+    next += 1;
+  } else if (total) {
+    const row = ws.getRow(next);
+    row.getCell(1).value = 'Total';
+    for (const c of total) {
+      const col = String.fromCharCode(64 + c);
+      const sum = rows.reduce((s, r) => s + (Number(r[c - 1]) || 0), 0);
+      row.getCell(c).value = { formula: `SUM(${col}${first}:${col}${next - 1})`, result: sum };
+      row.getCell(c).numFmt = formats[c - 1] || XL_MONEY;
+    }
+    xlTotal(row);
+    next += 1;
+  }
+  return next + 1;
+}
+
+function buildMonthWorkbook(ExcelJS, data) {
+  const { year, month, entries, boxMoves, buckets, settings, purses, purseMoves } = data;
+  const monthName = MONTH_NAMES[month - 1];
+  const period = exportPeriod(year, month);
+  const boxNames = Object.fromEntries(buckets.map((b) => [b.key, b.name]));
+  const cardNames = Object.fromEntries(purses.map((p) => [p.id, p.name]));
+  const entryById = Object.fromEntries(entries.map((e) => [e.id, e]));
+  const amt = (e) => Number(e.amount);
+  const sum = (list, f = amt) => list.reduce((s, x) => s + f(x), 0);
+
+  const incomes = entries.filter((e) => e.type === 'income');
+  const expenses = entries.filter((e) => e.type === 'expense');
+  // Paying the card bill isn't new spending - the purchases were already counted.
+  const spending = expenses.filter((e) => e.category !== 'Credit Card Payment');
+  const moneyIn = sum(incomes);
+  const moneyOut = sum(spending);
+  const cardBillPaid = sum(expenses.filter((e) => e.category === 'Credit Card Payment'));
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Personal Finance Tracker';
+  wb.created = new Date();
+  wb.calcProperties.fullCalcOnLoad = true;
+
+  // ----- Summary -----
+  const ws = wb.addWorksheet('Summary', { views: [{ showGridLines: false }] });
+  ws.columns = [{ width: 34 }, { width: 16 }, { width: 16 }, { width: 14 }];
+  ws.mergeCells('A1:D1');
+  ws.getCell('A1').value = `Money report - ${monthName} ${year}`;
+  ws.getCell('A1').font = { bold: true, size: 18, color: { argb: XL.navy } };
+  ws.mergeCells('A2:D2');
+  ws.getCell('A2').value = period.isCurrent
+    ? `Month in progress: covers 1–${period.lastDay} ${monthName} (made ${new Date().toLocaleString()})`
+    : `Full month · made ${new Date().toLocaleString()}`;
+  ws.getCell('A2').font = { italic: true, color: { argb: XL.muted } };
+
+  const days = Math.max(1, period.lastDay);
+  let at = 4;
+  const glance = at + 2; // first data row of the block below
+  at = xlSection(ws, at, 'The month at a glance', ['', 'AED'], [
+    ['Money in', moneyIn],
+    ['Money out (spending)', moneyOut],
+    ['Saved (in − out)', moneyIn - moneyOut],
+    ['Savings rate', moneyIn > 0 ? (moneyIn - moneyOut) / moneyIn : 0],
+    [`Average spent per day (${days} days)`, moneyOut / days],
+    ['Credit card bill paid', cardBillPaid],
+    ['Number of entries', entries.length],
+  ], [null, XL_MONEY]);
+  ws.getCell(glance + 2, 2).font = { bold: true, color: { argb: moneyIn - moneyOut >= 0 ? XL.green : XL.red } };
+  ws.getCell(glance + 3, 2).numFmt = XL_PCT;
+  ws.getCell(glance + 6, 2).numFmt = '0';
+
+  const byCat = {};
+  for (const e of spending) {
+    byCat[e.category] ||= { count: 0, total: 0 };
+    byCat[e.category].count += 1;
+    byCat[e.category].total += amt(e);
+  }
+  at = xlSection(ws, at, 'Where the money went (by category)', ['Category', 'Spent', 'Share', 'Times'],
+    Object.entries(byCat).sort((a, b) => b[1].total - a[1].total)
+      .map(([c, v]) => [c, v.total, moneyOut ? v.total / moneyOut : 0, v.count]),
+    [null, XL_MONEY, XL_PCT, '0'], { total: [2, 3, 4] });
+
+  const byBox = {};
+  for (const e of spending) if (e.bucket) byBox[e.bucket] = (byBox[e.bucket] || 0) + amt(e);
+  at = xlSection(ws, at, 'Spent from each box', ['Box', 'Spent', 'Share'],
+    Object.entries(byBox).sort((a, b) => b[1] - a[1])
+      .map(([k, v]) => [boxNames[k] || k, v, moneyOut ? v / moneyOut : 0]),
+    [null, XL_MONEY, XL_PCT], { total: [2] });
+
+  const classes = { need: 'Needs', want: 'Wants', luxury: 'Luxury', investment: 'Investing' };
+  const byClass = {};
+  for (const e of spending) {
+    const label = classes[e.classification] || 'Not tagged';
+    byClass[label] = (byClass[label] || 0) + amt(e);
+  }
+  at = xlSection(ws, at, 'Needs vs wants', ['Type', 'Spent', 'Share'],
+    Object.entries(byClass).sort((a, b) => b[1] - a[1]).map(([k, v]) => [k, v, moneyOut ? v / moneyOut : 0]),
+    [null, XL_MONEY, XL_PCT]);
+
+  const byMethod = {};
+  for (const e of spending) byMethod[paidWithLabel(e)] = (byMethod[paidWithLabel(e)] || 0) + amt(e);
+  at = xlSection(ws, at, 'How you paid', ['Paid with', 'Spent', 'Share'],
+    Object.entries(byMethod).map(([k, v]) => [k, v, moneyOut ? v / moneyOut : 0]), [null, XL_MONEY, XL_PCT]);
+
+  const bySource = {};
+  for (const e of incomes) bySource[e.category] = (bySource[e.category] || 0) + amt(e);
+  at = xlSection(ws, at, 'Money in (by source)', ['Source', 'Received'],
+    Object.entries(bySource).sort((a, b) => b[1] - a[1]), [null, XL_MONEY], { total: [2] });
+
+  const boxesTotal = sum(buckets, (b) => Number(b.balance));
+  at = xlSection(ws, at, 'Balances right now', ['', 'AED'], [
+    ['Bank', Number(settings.bank_balance)],
+    ['Cash on hand', Number(settings.cash_balance)],
+    ['Owed on credit card', Number(settings.credit_outstanding)],
+    ['In all boxes', boxesTotal],
+    ...(purses.length ? [['On bus cards', sum(purses, (p) => Number(p.balance))]] : []),
+  ], [null, XL_MONEY]);
+  ws.pageSetup = { orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+
+  // ----- Transactions -----
+  const tx = wb.addWorksheet('Transactions', { views: [{ state: 'frozen', ySplit: 1 }] });
+  tx.columns = [
+    { header: 'Date', width: 17 }, { header: 'Type', width: 9 }, { header: 'Category', width: 18 },
+    { header: 'Need / want', width: 12 }, { header: 'Paid with', width: 14 }, { header: 'Box', width: 22 },
+    { header: 'Bus card', width: 15 }, { header: 'Money in', width: 13 }, { header: 'Money out', width: 13 },
+    { header: 'Note', width: 32 }, { header: 'What you typed', width: 40 },
+  ];
+  xlHeader(tx.getRow(1));
+  entries.forEach((e, i) => {
+    const row = tx.addRow([
+      xlDate(e.entry_date),
+      e.type === 'income' ? 'In' : e.category === 'Credit Card Payment' ? 'Card bill' : 'Out',
+      e.category,
+      e.classification || '',
+      paidWithLabel(e),
+      e.bucket === 'split' ? 'All boxes (split)' : e.bucket ? boxNames[e.bucket] || e.bucket : '',
+      e.purse_id ? `Top up ${cardNames[e.purse_id] || ''}`.trim() : '',
+      e.type === 'income' ? amt(e) : null,
+      e.type === 'expense' ? amt(e) : null,
+      e.note || '',
+      e.raw_input || '',
+    ]);
+    row.getCell(1).numFmt = XL_DATE;
+    row.getCell(8).numFmt = XL_MONEY;
+    row.getCell(9).numFmt = XL_MONEY;
+    row.getCell(8).font = { color: { argb: XL.green } };
+    row.getCell(9).font = { color: { argb: XL.red } };
+    row.getCell(10).alignment = { wrapText: true, vertical: 'top' };
+    row.getCell(11).alignment = { wrapText: true, vertical: 'top' };
+    xlZebra(row, i);
+  });
+  const lastTx = entries.length + 1;
+  const txTotal = tx.addRow(['Total', '', '', '', '', '', '',
+    { formula: `SUM(H2:H${Math.max(2, lastTx)})`, result: moneyIn },
+    { formula: `SUM(I2:I${Math.max(2, lastTx)})`, result: sum(expenses) }]);
+  txTotal.getCell(8).numFmt = XL_MONEY;
+  txTotal.getCell(9).numFmt = XL_MONEY;
+  xlTotal(txTotal);
+  if (cardBillPaid) {
+    const foot = tx.addRow([`Money out includes ${fmt(cardBillPaid)} paid off the credit card bill - those purchases are already listed, so real spending is ${fmt(moneyOut)}.`]);
+    foot.getCell(1).font = { italic: true, color: { argb: XL.muted } };
+  }
+  tx.autoFilter = { from: 'A1', to: { row: Math.max(1, lastTx), column: 11 } };
+  tx.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+
+  // ----- Daily -----
+  const daily = wb.addWorksheet('Daily', { views: [{ state: 'frozen', ySplit: 1 }] });
+  daily.columns = [
+    { header: 'Date', width: 17 }, { header: 'Money in', width: 13 }, { header: 'Money out', width: 13 },
+    { header: 'Spent so far', width: 14 }, { header: 'Entries', width: 9 }, { header: 'Spent on', width: 50 },
+  ];
+  xlHeader(daily.getRow(1));
+  for (let d = 1; d <= period.lastDay; d++) {
+    const iso = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const dayEntries = entries.filter((e) => e.entry_date === iso);
+    const daySpend = dayEntries.filter((e) => e.type === 'expense' && e.category !== 'Credit Card Payment');
+    const r = d + 1;
+    const row = daily.addRow([
+      xlDate(iso),
+      sum(dayEntries.filter((e) => e.type === 'income')) || null,
+      sum(daySpend) || null,
+      { formula: d === 1 ? 'C2' : `D${r - 1}+C${r}`, result: 0 },
+      dayEntries.length || null,
+      daySpend.map((e) => `${e.category} ${fmt(e.amount)}${e.note ? ` (${e.note})` : ''}`).join(', '),
+    ]);
+    row.getCell(1).numFmt = XL_DATE;
+    [2, 3, 4].forEach((c) => { row.getCell(c).numFmt = XL_MONEY; });
+    row.getCell(2).font = { color: { argb: XL.green } };
+    row.getCell(3).font = { color: { argb: XL.red } };
+    row.getCell(6).alignment = { wrapText: true, vertical: 'top' };
+    xlZebra(row, d - 1);
+  }
+  // Fill in the running total's cached values so it shows before Excel recalculates.
+  let running = 0;
+  for (let d = 1; d <= period.lastDay; d++) {
+    running += Number(daily.getCell(d + 1, 3).value) || 0;
+    daily.getCell(d + 1, 4).value = { formula: daily.getCell(d + 1, 4).value.formula, result: running };
+  }
+
+  // ----- Boxes -----
+  const bx = wb.addWorksheet('Boxes', { views: [{ state: 'frozen', ySplit: 1 }] });
+  bx.columns = [
+    { header: 'Box', width: 30 }, { header: 'Balance now', width: 14 }, { header: 'Came in this month', width: 16 },
+    { header: 'Went out this month', width: 16 }, { header: 'Of which spent', width: 14 }, { header: 'Limit', width: 12 },
+    { width: 30 },
+  ];
+  xlHeader(bx.getRow(1));
+  buckets.forEach((b, i) => {
+    const inMoves = boxMoves.filter((m) => m.to_bucket === b.key);
+    const outMoves = boxMoves.filter((m) => m.from_bucket === b.key);
+    const row = bx.addRow([
+      b.name, Number(b.balance), sum(inMoves), sum(outMoves),
+      sum(outMoves.filter((m) => m.reason === 'spend')), b.cap == null ? null : Number(b.cap),
+    ]);
+    [2, 3, 4, 5, 6].forEach((c) => { row.getCell(c).numFmt = XL_MONEY; });
+    xlZebra(row, i);
+  });
+  const bxTotal = bx.addRow(['Total',
+    { formula: `SUM(B2:B${buckets.length + 1})`, result: boxesTotal }]);
+  bxTotal.getCell(2).numFmt = XL_MONEY;
+  xlTotal(bxTotal);
+
+  let bRow = buckets.length + 4;
+  bx.getCell(bRow, 1).value = 'Every box move this month';
+  bx.getCell(bRow, 1).font = { bold: true, size: 12, color: { argb: XL.navy } };
+  bRow += 1;
+  ['Date', 'Out of', 'Into', 'Amount', 'Why', 'For'].forEach((h, i) => { bx.getCell(bRow, i + 1).value = h; });
+  xlHeader(bx.getRow(bRow));
+  boxMoves.forEach((m, i) => {
+    const e = m.entry_id ? entryById[m.entry_id] : null;
+    const row = bx.getRow(bRow + 1 + i);
+    row.values = [
+      xlDate(m.move_date),
+      m.from_bucket ? boxNames[m.from_bucket] || m.from_bucket : '(new money)',
+      m.to_bucket ? boxNames[m.to_bucket] || m.to_bucket : '(spent)',
+      Number(m.amount),
+      moveReasonLabel(m.reason),
+      e ? [e.category, e.note].filter(Boolean).join(' - ') : '',
+    ];
+    row.getCell(1).numFmt = XL_DATE;
+    row.getCell(4).numFmt = XL_MONEY;
+    xlZebra(row, i);
+  });
+
+  // ----- Bus cards -----
+  if (purses.length) {
+    const pc = wb.addWorksheet('Bus Cards');
+    pc.columns = [{ width: 18 }, { width: 18 }, { width: 14 }, { width: 14 }, { width: 30 }];
+    ['Card', 'Balance now', 'Topped up', 'Fares'].forEach((h, i) => { pc.getCell(1, i + 1).value = h; });
+    xlHeader(pc.getRow(1));
+    purses.forEach((p, i) => {
+      const moves = purseMoves.filter((m) => m.purse_id === p.id);
+      const row = pc.addRow([
+        p.name, Number(p.balance),
+        sum(moves.filter((m) => m.reason === 'topup')),
+        -sum(moves.filter((m) => m.reason === 'ride')),
+      ]);
+      [2, 3, 4].forEach((c) => { row.getCell(c).numFmt = XL_MONEY; });
+      xlZebra(row, i);
+    });
+    let pRow = purses.length + 3;
+    ['Date', 'Card', 'What', 'Amount', 'Note'].forEach((h, i) => { pc.getCell(pRow, i + 1).value = h; });
+    xlHeader(pc.getRow(pRow));
+    purseMoves.forEach((m, i) => {
+      const row = pc.getRow(pRow + 1 + i);
+      row.values = [xlDate(m.move_date), cardNames[m.purse_id] || '', purseReasonLabel(m.reason), Number(m.amount), m.note || ''];
+      row.getCell(1).numFmt = XL_DATE;
+      row.getCell(4).numFmt = XL_MONEY;
+      row.getCell(4).font = { color: { argb: Number(m.amount) < 0 ? XL.red : XL.green } };
+      xlZebra(row, i);
+    });
+  }
+
+  return wb;
+}
 
 // ---------- utils ----------
 
@@ -1025,6 +1658,7 @@ function initApp() {
   loadSection(refreshBalances, 'balances');
   loadSection(refreshBoxes, 'boxes');
   loadSection(refreshCreditCard, 'credit card');
+  loadSection(refreshPurses, 'bus cards');
   loadSection(refreshMonthly, 'monthly summary');
   loadSection(refreshLedger, 'ledger');
 }

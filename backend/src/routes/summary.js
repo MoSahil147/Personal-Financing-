@@ -172,4 +172,37 @@ router.get('/yearly', async (req, res) => {
   });
 });
 
+// Everything for one month's Excel report: the entries, every box and card
+// move dated in that month, and the boxes, cards and balances as they are now.
+// Cards are optional - the report still works before the purses migration.
+router.get('/export', async (req, res) => {
+  const year = Number(req.query.year);
+  const month = Number(req.query.month);
+  if (!year || !month) return res.status(400).json({ error: 'year and month are required' });
+  const { start, end } = monthRange(year, month);
+
+  const [entries, boxMoves, buckets, settings, purses, purseMoves] = await Promise.all([
+    supabase.from('entries').select('*').gte('entry_date', start).lt('entry_date', end)
+      .order('entry_date').order('created_at'),
+    supabase.from('bucket_moves').select('*').gte('move_date', start).lt('move_date', end).order('created_at'),
+    supabase.from('buckets').select('*').order('sort'),
+    supabase.from('settings').select('*').eq('id', 'main').single(),
+    supabase.from('purses').select('*').order('sort').order('name'),
+    supabase.from('purse_moves').select('*').gte('move_date', start).lt('move_date', end).order('created_at'),
+  ]);
+  const failed = [entries, boxMoves, buckets, settings].find((r) => r.error);
+  if (failed) return res.status(500).json({ error: failed.error.message });
+
+  res.json({
+    year,
+    month,
+    entries: entries.data,
+    boxMoves: boxMoves.data,
+    buckets: buckets.data,
+    settings: settings.data,
+    purses: purses.error ? [] : purses.data,
+    purseMoves: purseMoves.error ? [] : purseMoves.data,
+  });
+});
+
 module.exports = router;

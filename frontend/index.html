@@ -82,6 +82,16 @@
       </details>
     </div>
 
+    <div class="card" id="purses-card" hidden>
+      <div class="boxes-head">
+        <h2>Bus Cards</h2>
+        <span class="cc-owed">Total <strong id="purses-total">-</strong></span>
+      </div>
+      <p class="cc-note">Topping up a card comes out of your bank (or cash) and the Transport box. A fare only comes off the card.</p>
+      <div id="purses-grid"></div>
+      <div id="purse-detail" hidden></div>
+    </div>
+
     <div class="card" id="cc-card">
       <div class="boxes-head">
         <h2>Credit Card</h2>
@@ -161,7 +171,10 @@
     </div>
 
     <div class="card">
-      <h2>Ledger <span id="ledger-period" class="ledger-period"></span></h2>
+      <div class="boxes-head ledger-head">
+        <h2>Ledger <span id="ledger-period" class="ledger-period"></span></h2>
+        <button id="export-btn" class="export-btn" type="button">⬇ Excel</button>
+      </div>
       <ul id="ledger-list"></ul>
     </div>
   </div>
@@ -200,6 +213,11 @@
         <span>New month: run month-end first (leftovers → buffer/emergency)</span>
       </label>
       <div id="confirm-bucket-hint" class="confirm-hint"></div>
+      <div id="confirm-purse-row" hidden>
+        <label>Top up a bus card</label>
+        <select id="confirm-purse"></select>
+        <div id="confirm-purse-hint" class="confirm-hint"></div>
+      </div>
       <label>Date</label>
       <input type="date" id="confirm-date" />
       <label>Note</label>
@@ -207,6 +225,46 @@
       <div id="confirm-actions">
         <button id="confirm-cancel">Cancel</button>
         <button id="confirm-save">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="card-modal" class="modal" hidden>
+    <div class="modal-box">
+      <h3 id="card-modal-title">Bus card</h3>
+      <label>Card</label>
+      <select id="card-modal-purse"></select>
+      <label>What happened</label>
+      <select id="card-modal-mode">
+        <option value="ride">Paid a fare with the card</option>
+        <option value="set">Fix the balance to what the card shows</option>
+      </select>
+      <label id="card-modal-amount-label">Fare</label>
+      <input type="number" id="card-modal-amount" step="0.01" min="0" inputmode="decimal" />
+      <div id="card-modal-note-row">
+        <label>Note</label>
+        <input type="text" id="card-modal-note" placeholder="e.g. office" />
+      </div>
+      <div id="card-modal-hint" class="confirm-hint"></div>
+      <div class="modal-actions">
+        <button id="card-modal-cancel" class="btn-secondary" type="button">Cancel</button>
+        <button id="card-modal-save" class="btn-primary" type="button">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="export-modal" class="modal" hidden>
+    <div class="modal-box">
+      <h3>Download Excel</h3>
+      <label>Which month?</label>
+      <div class="export-pickers">
+        <select id="export-month"></select>
+        <select id="export-year"></select>
+      </div>
+      <div id="export-hint" class="confirm-hint"></div>
+      <div class="modal-actions">
+        <button id="export-cancel" class="btn-secondary" type="button">Cancel</button>
+        <button id="export-go" class="btn-primary" type="button">Download</button>
       </div>
     </div>
   </div>
