@@ -574,7 +574,7 @@ document.getElementById('box-pie-spent').addEventListener('click', () => setBoxP
 
 function moveReasonLabel(reason) {
   return {
-    setup: 'Starting split', income: 'Income split', salary: 'Salary split', refund: 'Refund', spend: 'Spent', close: 'Month end (salary)',
+    setup: 'Starting split', income: 'Money in', salary: 'Salary', refund: 'Refund', spend: 'Spent', close: 'Month end (salary)',
   }[reason] || reason;
 }
 
@@ -1090,7 +1090,8 @@ async function updateBucketHint() {
   const value = document.getElementById('confirm-bucket').value;
   const isExpense = document.getElementById('confirm-type').value === 'expense';
   const amount = Number(document.getElementById('confirm-amount').value) || 0;
-  document.getElementById('confirm-new-month-row').hidden = isExpense || value !== 'split';
+  // Any income can start a new month (normally the salary), split or into one box.
+  document.getElementById('confirm-new-month-row').hidden = isExpense || !value;
 
   if (!value) {
     hint.textContent = "This won't change any box.";
@@ -1123,7 +1124,21 @@ async function updateBucketHint() {
   if (!box) return;
   const picked = value === state.suggestedBucket ? 'I picked' : 'You picked';
   if (!isExpense) {
-    hint.innerHTML = `${picked} <strong>${escapeHtml(box.name)}</strong> to put this back into. OK? Change it above if not.`;
+    const intoBox = `All of it goes into <strong>${escapeHtml(box.name)}</strong> (has ${fmt(box.balance)}). Pick "All boxes" above to split it instead.`;
+    if (!document.getElementById('confirm-new-month').checked || !amount) {
+      hint.innerHTML = intoBox;
+      return;
+    }
+    try {
+      const params = new URLSearchParams({ amount, category: categorySelect.value, new_month: '1' });
+      const { closeMoves } = await api(`/api/buckets/split-preview?${params}`);
+      const closeText = closeMoves.length
+        ? closeMoves.map((m) => `${escapeHtml(boxName(m.from))} → ${escapeHtml(boxName(m.to))} <strong>${fmt(m.amount)}</strong>`).join(' · ')
+        : 'nothing to move';
+      hint.innerHTML = `<div>Month-end first: ${closeText}</div><div>Then: ${intoBox}</div>`;
+    } catch (err) {
+      hint.textContent = `Couldn't preview the month-end: ${err.message}`;
+    }
     return;
   }
   const after = box.balance - amount;
@@ -1245,29 +1260,24 @@ function openExportModal() {
   document.getElementById('export-modal').hidden = false;
 }
 
-// How much of the month the sheet covers: all of it, or up to today.
-function exportPeriod(year, month) {
-  const now = new Date();
-  const daysInMonth = new Date(year, month, 0).getDate();
-  const isCurrent = year === now.getFullYear() && month === now.getMonth() + 1;
-  const isFuture = year > now.getFullYear() || (year === now.getFullYear() && month > now.getMonth() + 1);
-  return { daysInMonth, isCurrent, isFuture, lastDay: isCurrent ? now.getDate() : daysInMonth };
-}
-
 function updateExportHint() {
   const year = Number(document.getElementById('export-year').value);
   const month = Number(document.getElementById('export-month').value);
-  const p = exportPeriod(year, month);
+  const cycle = document.getElementById('export-cycle').value;
   const name = MONTH_NAMES[month - 1];
-  document.getElementById('export-hint').innerHTML = p.isCurrent
-    ? `${name} isn't over yet - the sheet will have everything so far (1–${p.lastDay} ${name.slice(0, 3)}).`
-    : p.isFuture ? `${name} ${year} hasn't started yet, so the sheet will be empty.`
-      : `The whole of ${name} ${year}.`;
+  const now = new Date();
+  const isCurrent = year === now.getFullYear() && month === now.getMonth() + 1;
+  const isFuture = year > now.getFullYear() || (year === now.getFullYear() && month > now.getMonth() + 1);
+  document.getElementById('export-month-label').textContent = cycle === 'salary' ? 'Month the salary came in' : 'Which month?';
+  document.getElementById('export-hint').innerHTML = cycle === 'salary'
+    ? `From the salary you logged in ${name} ${year} up to the day before the next salary - or up to today if it hasn't come yet.`
+    : isCurrent ? `${name} isn't over yet - the sheet will have everything so far (1–${now.getDate()} ${name.slice(0, 3)}).`
+      : isFuture ? `${name} ${year} hasn't started yet, so the sheet will be empty.`
+        : `The whole of ${name} ${year}, 1st to the last day.`;
 }
 
 document.getElementById('export-btn').addEventListener('click', openExportModal);
-document.getElementById('export-month').addEventListener('change', updateExportHint);
-document.getElementById('export-year').addEventListener('change', updateExportHint);
+['export-month', 'export-year', 'export-cycle'].forEach((id) => document.getElementById(id).addEventListener('change', updateExportHint));
 document.getElementById('export-cancel').addEventListener('click', () => { document.getElementById('export-modal').hidden = true; });
 
 document.getElementById('export-go').addEventListener('click', async () => {
@@ -1275,16 +1285,18 @@ document.getElementById('export-go').addEventListener('click', async () => {
   if (btn.disabled) return;
   const year = Number(document.getElementById('export-year').value);
   const month = Number(document.getElementById('export-month').value);
+  const cycle = document.getElementById('export-cycle').value;
   btn.disabled = true;
   btn.textContent = 'Making your sheet…';
   try {
-    const [ExcelJS, data] = await Promise.all([loadExcelJs(), api(`/api/summary/export?year=${year}&month=${month}`)]);
+    const params = new URLSearchParams({ year, month, cycle });
+    const [ExcelJS, data] = await Promise.all([loadExcelJs(), api(`/api/summary/export?${params}`)]);
     const workbook = buildMonthWorkbook(ExcelJS, data);
     const buffer = await workbook.xlsx.writeBuffer();
-    const p = exportPeriod(year, month);
+    const label = cycle === 'salary' ? `Salary-month-${data.from}` : `${year}-${String(month).padStart(2, '0')}-${MONTH_NAMES[month - 1]}`;
     downloadFile(
       new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
-      `Finance-${year}-${String(month).padStart(2, '0')}-${MONTH_NAMES[month - 1]}${p.isCurrent ? '-so-far' : ''}.xlsx`,
+      `Finance-${label}${data.inProgress ? '-so-far' : ''}.xlsx`,
     );
     document.getElementById('export-modal').hidden = true;
   } catch (err) {
@@ -1307,7 +1319,7 @@ function downloadFile(blob, filename) {
 }
 
 const XL = {
-  navy: 'FF1F3A5F', white: 'FFFFFFFF', zebra: 'FFF4F6FA', section: 'FFE8EEF7',
+  navy: 'FF1F3A5F', white: 'FFFFFFFF', zebra: 'FFF4F6FA', band: 'FFE8EEF7',
   green: 'FF1E7B45', red: 'FFB3261E', muted: 'FF6B7280', line: 'FFD9DEE7',
 };
 const XL_MONEY = '#,##0.00;[Red]-#,##0.00';
@@ -1321,6 +1333,13 @@ function paidWithLabel(e) {
   return 'Bank (debit)';
 }
 
+// What a line was for, like a bank statement's description: your note first,
+// then what you typed in the chat, then just the category.
+function describeEntry(e) {
+  if (e.category === 'Credit Card Payment' && !e.note) return 'Credit card bill payment';
+  return (e.note || e.raw_input || e.category || '').trim();
+}
+
 // Excel dates are stored without a timezone; building them in UTC keeps
 // "2026-10-17" from turning into the 16th.
 function xlDate(iso) {
@@ -1328,10 +1347,24 @@ function xlDate(iso) {
   return new Date(Date.UTC(y, m - 1, d));
 }
 
+function niceDate(iso) {
+  return xlDate(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+}
+
+function datesBetween(from, to) {
+  const out = [];
+  for (let d = xlDate(from); d <= xlDate(to); d = new Date(d.getTime() + 86400000)) out.push(d.toISOString().slice(0, 10));
+  return out;
+}
+
+function xlFill(cell, argb) {
+  cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb } };
+}
+
 function xlHeader(row) {
   row.eachCell((cell) => {
     cell.font = { bold: true, color: { argb: XL.white } };
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: XL.navy } };
+    xlFill(cell, XL.navy);
     cell.alignment = { vertical: 'middle', wrapText: true };
   });
   row.height = 20;
@@ -1339,24 +1372,38 @@ function xlHeader(row) {
 
 function xlZebra(row, index) {
   row.eachCell({ includeEmpty: true }, (cell) => {
-    if (index % 2) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: XL.zebra } };
+    if (index % 2) xlFill(cell, XL.zebra);
     cell.border = { bottom: { style: 'thin', color: { argb: XL.line } } };
   });
 }
 
 function xlTotal(row) {
   row.eachCell({ includeEmpty: true }, (cell) => {
-    cell.font = { bold: true };
+    cell.font = { ...(cell.font || {}), bold: true };
     cell.border = { top: { style: 'thin' }, bottom: { style: 'double' } };
   });
+}
+
+function xlTitle(ws, title, subtitle, lastCol) {
+  ws.mergeCells(1, 1, 1, lastCol);
+  ws.getCell(1, 1).value = title;
+  ws.getCell(1, 1).font = { bold: true, size: 16, color: { argb: XL.navy } };
+  ws.mergeCells(2, 1, 2, lastCol);
+  ws.getCell(2, 1).value = subtitle;
+  ws.getCell(2, 1).font = { italic: true, color: { argb: XL.muted } };
+}
+
+function colLetter(c) {
+  let s = '';
+  for (let n = c; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + ((n - 1) % 26)) + s;
+  return s;
 }
 
 // A titled block of rows on the Summary sheet; returns the next free row.
 // `rows` are arrays of [label, value, ...]; `formats` gives each column's numFmt.
 function xlSection(ws, at, title, headers, rows, formats = [], { total } = {}) {
-  const titleCell = ws.getCell(at, 1);
-  titleCell.value = title;
-  titleCell.font = { bold: true, size: 12, color: { argb: XL.navy } };
+  ws.getCell(at, 1).value = title;
+  ws.getCell(at, 1).font = { bold: true, size: 12, color: { argb: XL.navy } };
   at += 1;
   headers.forEach((h, i) => { ws.getCell(at, i + 1).value = h; });
   xlHeader(ws.getRow(at));
@@ -1379,9 +1426,9 @@ function xlSection(ws, at, title, headers, rows, formats = [], { total } = {}) {
     const row = ws.getRow(next);
     row.getCell(1).value = 'Total';
     for (const c of total) {
-      const col = String.fromCharCode(64 + c);
-      const sum = rows.reduce((s, r) => s + (Number(r[c - 1]) || 0), 0);
-      row.getCell(c).value = { formula: `SUM(${col}${first}:${col}${next - 1})`, result: sum };
+      const col = colLetter(c);
+      const result = rows.reduce((s, r) => s + (Number(r[c - 1]) || 0), 0);
+      row.getCell(c).value = { formula: `SUM(${col}${first}:${col}${next - 1})`, result };
       row.getCell(c).numFmt = formats[c - 1] || XL_MONEY;
     }
     xlTotal(row);
@@ -1391,22 +1438,27 @@ function xlSection(ws, at, title, headers, rows, formats = [], { total } = {}) {
 }
 
 function buildMonthWorkbook(ExcelJS, data) {
-  const { year, month, entries, boxMoves, buckets, settings, purses, purseMoves } = data;
-  const monthName = MONTH_NAMES[month - 1];
-  const period = exportPeriod(year, month);
+  const { year, month, cycle, from, to, inProgress, entries, boxMoves, buckets, settings, purses, purseMoves } = data;
+  const periodName = cycle === 'salary'
+    ? `Salary month ${niceDate(from)} – ${niceDate(to)}`
+    : `${MONTH_NAMES[month - 1]} ${year}`;
+  const periodNote = `${niceDate(from)} to ${niceDate(to)}${inProgress ? ' · still in progress (everything so far)' : ''} · made ${new Date().toLocaleString('en-GB')}`;
+  const days = datesBetween(from, to);
   const boxNames = Object.fromEntries(buckets.map((b) => [b.key, b.name]));
   const cardNames = Object.fromEntries(purses.map((p) => [p.id, p.name]));
   const entryById = Object.fromEntries(entries.map((e) => [e.id, e]));
+  const boxLabel = (e) => (e.bucket === 'split' ? 'All boxes (split)' : e.bucket ? boxNames[e.bucket] || e.bucket : '');
   const amt = (e) => Number(e.amount);
   const sum = (list, f = amt) => list.reduce((s, x) => s + f(x), 0);
 
   const incomes = entries.filter((e) => e.type === 'income');
   const expenses = entries.filter((e) => e.type === 'expense');
   // Paying the card bill isn't new spending - the purchases were already counted.
-  const spending = expenses.filter((e) => e.category !== 'Credit Card Payment');
+  const isCardBill = (e) => e.category === 'Credit Card Payment';
+  const spending = expenses.filter((e) => !isCardBill(e));
   const moneyIn = sum(incomes);
   const moneyOut = sum(spending);
-  const cardBillPaid = sum(expenses.filter((e) => e.category === 'Credit Card Payment'));
+  const cardBillPaid = sum(expenses.filter(isCardBill));
 
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Personal Finance Tracker';
@@ -1415,31 +1467,29 @@ function buildMonthWorkbook(ExcelJS, data) {
 
   // ----- Summary -----
   const ws = wb.addWorksheet('Summary', { views: [{ showGridLines: false }] });
-  ws.columns = [{ width: 34 }, { width: 16 }, { width: 16 }, { width: 14 }];
-  ws.mergeCells('A1:D1');
-  ws.getCell('A1').value = `Money report - ${monthName} ${year}`;
-  ws.getCell('A1').font = { bold: true, size: 18, color: { argb: XL.navy } };
-  ws.mergeCells('A2:D2');
-  ws.getCell('A2').value = period.isCurrent
-    ? `Month in progress: covers 1–${period.lastDay} ${monthName} (made ${new Date().toLocaleString()})`
-    : `Full month · made ${new Date().toLocaleString()}`;
-  ws.getCell('A2').font = { italic: true, color: { argb: XL.muted } };
+  ws.columns = [{ width: 36 }, { width: 16 }, { width: 12 }, { width: 10 }];
+  xlTitle(ws, `Money report - ${periodName}`, periodNote, 4);
 
-  const days = Math.max(1, period.lastDay);
   let at = 4;
   const glance = at + 2; // first data row of the block below
-  at = xlSection(ws, at, 'The month at a glance', ['', 'AED'], [
+  at = xlSection(ws, at, 'At a glance', ['', 'AED'], [
     ['Money in', moneyIn],
     ['Money out (spending)', moneyOut],
     ['Saved (in − out)', moneyIn - moneyOut],
     ['Savings rate', moneyIn > 0 ? (moneyIn - moneyOut) / moneyIn : 0],
-    [`Average spent per day (${days} days)`, moneyOut / days],
+    [`Average spent per day (${days.length} days)`, moneyOut / Math.max(1, days.length)],
+    ['Biggest single spend', spending.length ? Math.max(...spending.map(amt)) : 0],
     ['Credit card bill paid', cardBillPaid],
     ['Number of entries', entries.length],
   ], [null, XL_MONEY]);
   ws.getCell(glance + 2, 2).font = { bold: true, color: { argb: moneyIn - moneyOut >= 0 ? XL.green : XL.red } };
   ws.getCell(glance + 3, 2).numFmt = XL_PCT;
-  ws.getCell(glance + 6, 2).numFmt = '0';
+  ws.getCell(glance + 7, 2).numFmt = '0';
+  const biggest = spending.reduce((b, e) => (!b || amt(e) > amt(b) ? e : b), null);
+  if (biggest) {
+    ws.getCell(glance + 5, 3).value = describeEntry(biggest);
+    ws.getCell(glance + 5, 3).font = { color: { argb: XL.muted } };
+  }
 
   const byCat = {};
   for (const e of spending) {
@@ -1447,16 +1497,15 @@ function buildMonthWorkbook(ExcelJS, data) {
     byCat[e.category].count += 1;
     byCat[e.category].total += amt(e);
   }
+  const catOrder = Object.entries(byCat).sort((a, b) => b[1].total - a[1].total);
   at = xlSection(ws, at, 'Where the money went (by category)', ['Category', 'Spent', 'Share', 'Times'],
-    Object.entries(byCat).sort((a, b) => b[1].total - a[1].total)
-      .map(([c, v]) => [c, v.total, moneyOut ? v.total / moneyOut : 0, v.count]),
+    catOrder.map(([c, v]) => [c, v.total, moneyOut ? v.total / moneyOut : 0, v.count]),
     [null, XL_MONEY, XL_PCT, '0'], { total: [2, 3, 4] });
 
   const byBox = {};
   for (const e of spending) if (e.bucket) byBox[e.bucket] = (byBox[e.bucket] || 0) + amt(e);
   at = xlSection(ws, at, 'Spent from each box', ['Box', 'Spent', 'Share'],
-    Object.entries(byBox).sort((a, b) => b[1] - a[1])
-      .map(([k, v]) => [boxNames[k] || k, v, moneyOut ? v / moneyOut : 0]),
+    Object.entries(byBox).sort((a, b) => b[1] - a[1]).map(([k, v]) => [boxNames[k] || k, v, moneyOut ? v / moneyOut : 0]),
     [null, XL_MONEY, XL_PCT], { total: [2] });
 
   const classes = { need: 'Needs', want: 'Wants', luxury: 'Luxury', investment: 'Investing' };
@@ -1487,94 +1536,140 @@ function buildMonthWorkbook(ExcelJS, data) {
     ['In all boxes', boxesTotal],
     ...(purses.length ? [['On bus cards', sum(purses, (p) => Number(p.balance))]] : []),
   ], [null, XL_MONEY]);
+  ws.getCell(at, 1).value = 'Other sheets: Statement (every line, like a bank statement) · Spent On (each category with its items) · Daily · Boxes' + (purses.length ? ' · Bus Cards' : '');
+  ws.getCell(at, 1).font = { italic: true, color: { argb: XL.muted } };
   ws.pageSetup = { orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
 
-  // ----- Transactions -----
-  const tx = wb.addWorksheet('Transactions', { views: [{ state: 'frozen', ySplit: 1 }] });
-  tx.columns = [
-    { header: 'Date', width: 17 }, { header: 'Type', width: 9 }, { header: 'Category', width: 18 },
-    { header: 'Need / want', width: 12 }, { header: 'Paid with', width: 14 }, { header: 'Box', width: 22 },
-    { header: 'Bus card', width: 15 }, { header: 'Money in', width: 13 }, { header: 'Money out', width: 13 },
-    { header: 'Note', width: 32 }, { header: 'What you typed', width: 40 },
+  // ----- Statement: every line in date order, like a bank statement -----
+  const st = wb.addWorksheet('Statement', { views: [{ state: 'frozen', ySplit: 4 }] });
+  const stCols = [
+    ['Date', 16], ['Description (your note)', 42], ['Money in', 12], ['Money out', 12], ['Net so far', 13],
+    ['Category', 17], ['Box', 22], ['Paid with', 13], ['Need / want', 11], ['Bus card', 15], ['What you typed', 40],
   ];
-  xlHeader(tx.getRow(1));
+  st.columns = stCols.map(([, width]) => ({ width }));
+  xlTitle(st, `Statement - ${periodName}`, periodNote, stCols.length);
+  stCols.forEach(([h], i) => { st.getCell(4, i + 1).value = h; });
+  xlHeader(st.getRow(4));
+  let net = 0;
   entries.forEach((e, i) => {
-    const row = tx.addRow([
+    const r = 5 + i;
+    const isIn = e.type === 'income';
+    net += isIn ? amt(e) : -amt(e);
+    const row = st.getRow(r);
+    row.values = [
       xlDate(e.entry_date),
-      e.type === 'income' ? 'In' : e.category === 'Credit Card Payment' ? 'Card bill' : 'Out',
-      e.category,
-      e.classification || '',
+      describeEntry(e),
+      isIn ? amt(e) : null,
+      isIn ? null : amt(e),
+      { formula: i === 0 ? `C${r}-D${r}` : `E${r - 1}+C${r}-D${r}`, result: net },
+      isCardBill(e) ? 'Card bill' : e.category,
+      boxLabel(e),
       paidWithLabel(e),
-      e.bucket === 'split' ? 'All boxes (split)' : e.bucket ? boxNames[e.bucket] || e.bucket : '',
+      e.classification || '',
       e.purse_id ? `Top up ${cardNames[e.purse_id] || ''}`.trim() : '',
-      e.type === 'income' ? amt(e) : null,
-      e.type === 'expense' ? amt(e) : null,
-      e.note || '',
       e.raw_input || '',
-    ]);
+    ];
     row.getCell(1).numFmt = XL_DATE;
-    row.getCell(8).numFmt = XL_MONEY;
-    row.getCell(9).numFmt = XL_MONEY;
-    row.getCell(8).font = { color: { argb: XL.green } };
-    row.getCell(9).font = { color: { argb: XL.red } };
-    row.getCell(10).alignment = { wrapText: true, vertical: 'top' };
+    [3, 4, 5].forEach((c) => { row.getCell(c).numFmt = XL_MONEY; });
+    row.getCell(2).font = { bold: true };
+    row.getCell(3).font = { color: { argb: XL.green } };
+    row.getCell(4).font = { color: { argb: XL.red } };
+    row.getCell(2).alignment = { wrapText: true, vertical: 'top' };
     row.getCell(11).alignment = { wrapText: true, vertical: 'top' };
     xlZebra(row, i);
   });
-  const lastTx = entries.length + 1;
-  const txTotal = tx.addRow(['Total', '', '', '', '', '', '',
-    { formula: `SUM(H2:H${Math.max(2, lastTx)})`, result: moneyIn },
-    { formula: `SUM(I2:I${Math.max(2, lastTx)})`, result: sum(expenses) }]);
-  txTotal.getCell(8).numFmt = XL_MONEY;
-  txTotal.getCell(9).numFmt = XL_MONEY;
-  xlTotal(txTotal);
+  const stLast = 4 + entries.length;
+  const stTotal = st.getRow(stLast + 1);
+  stTotal.values = ['Total', `${entries.length} entries`,
+    { formula: `SUM(C5:C${Math.max(5, stLast)})`, result: moneyIn },
+    { formula: `SUM(D5:D${Math.max(5, stLast)})`, result: sum(expenses) },
+    { formula: `C${stLast + 1}-D${stLast + 1}`, result: moneyIn - sum(expenses) }];
+  [3, 4, 5].forEach((c) => { stTotal.getCell(c).numFmt = XL_MONEY; });
+  xlTotal(stTotal);
   if (cardBillPaid) {
-    const foot = tx.addRow([`Money out includes ${fmt(cardBillPaid)} paid off the credit card bill - those purchases are already listed, so real spending is ${fmt(moneyOut)}.`]);
-    foot.getCell(1).font = { italic: true, color: { argb: XL.muted } };
+    st.getCell(stLast + 2, 1).value = `Money out includes ${fmt(cardBillPaid)} paid off the credit card bill - those purchases are already listed, so real spending is ${fmt(moneyOut)}.`;
+    st.getCell(stLast + 2, 1).font = { italic: true, color: { argb: XL.muted } };
   }
-  tx.autoFilter = { from: 'A1', to: { row: Math.max(1, lastTx), column: 11 } };
-  tx.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+  if (entries.length) st.autoFilter = { from: { row: 4, column: 1 }, to: { row: stLast, column: stCols.length } };
+  st.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, printTitlesRow: '4:4' };
+
+  // ----- Spent On: each category with every item under it -----
+  const so = wb.addWorksheet('Spent On', { views: [{ showGridLines: false }] });
+  so.columns = [{ width: 16 }, { width: 44 }, { width: 14 }, { width: 22 }, { width: 13 }];
+  xlTitle(so, `What the money was spent on - ${periodName}`, periodNote, 5);
+  let sr = 4;
+  const group = (title, items, total, share) => {
+    const band = so.getRow(sr);
+    band.values = [title, `${items.length} item${items.length === 1 ? '' : 's'}${share != null ? ` · ${(share * 100).toFixed(1)}% of spending` : ''}`, '', '', total];
+    band.eachCell({ includeEmpty: true }, (c) => { xlFill(c, XL.band); c.font = { bold: true, color: { argb: XL.navy } }; });
+    band.getCell(5).numFmt = XL_MONEY;
+    sr += 1;
+    ['Date', 'Description (your note)', 'Paid with', 'Box', 'Amount'].forEach((h, i) => { so.getCell(sr, i + 1).value = h; });
+    xlHeader(so.getRow(sr));
+    sr += 1;
+    const first = sr;
+    [...items].sort((a, b) => a.entry_date.localeCompare(b.entry_date)).forEach((e, i) => {
+      const row = so.getRow(sr);
+      row.values = [xlDate(e.entry_date), describeEntry(e), paidWithLabel(e), boxLabel(e), amt(e)];
+      row.getCell(1).numFmt = XL_DATE;
+      row.getCell(5).numFmt = XL_MONEY;
+      row.getCell(2).alignment = { wrapText: true, vertical: 'top' };
+      xlZebra(row, i);
+      sr += 1;
+    });
+    const sub = so.getRow(sr);
+    sub.values = ['', `Total ${title}`, '', '', { formula: `SUM(E${first}:E${sr - 1})`, result: total }];
+    sub.getCell(5).numFmt = XL_MONEY;
+    xlTotal(sub);
+    sr += 2;
+  };
+  for (const [cat, v] of catOrder) group(cat, spending.filter((e) => e.category === cat), v.total, moneyOut ? v.total / moneyOut : 0);
+  if (incomes.length) {
+    so.getCell(sr, 1).value = 'Money received';
+    so.getCell(sr, 1).font = { bold: true, size: 13, color: { argb: XL.green } };
+    sr += 1;
+    for (const [src, total] of Object.entries(bySource).sort((a, b) => b[1] - a[1])) group(src, incomes.filter((e) => e.category === src), total, null);
+  }
+  if (!entries.length) {
+    so.getCell(sr, 1).value = 'Nothing logged in this period yet.';
+    so.getCell(sr, 1).font = { italic: true, color: { argb: XL.muted } };
+  }
+  so.pageSetup = { orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
 
   // ----- Daily -----
   const daily = wb.addWorksheet('Daily', { views: [{ state: 'frozen', ySplit: 1 }] });
   daily.columns = [
-    { header: 'Date', width: 17 }, { header: 'Money in', width: 13 }, { header: 'Money out', width: 13 },
-    { header: 'Spent so far', width: 14 }, { header: 'Entries', width: 9 }, { header: 'Spent on', width: 50 },
+    { header: 'Date', width: 16 }, { header: 'Money in', width: 12 }, { header: 'Money out', width: 12 },
+    { header: 'Spent so far', width: 13 }, { header: 'Entries', width: 9 }, { header: 'What on', width: 60 },
   ];
   xlHeader(daily.getRow(1));
-  for (let d = 1; d <= period.lastDay; d++) {
-    const iso = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  let running = 0;
+  days.forEach((iso, i) => {
+    const r = i + 2;
     const dayEntries = entries.filter((e) => e.entry_date === iso);
-    const daySpend = dayEntries.filter((e) => e.type === 'expense' && e.category !== 'Credit Card Payment');
-    const r = d + 1;
+    const daySpend = dayEntries.filter((e) => e.type === 'expense' && !isCardBill(e));
+    running += sum(daySpend);
     const row = daily.addRow([
       xlDate(iso),
       sum(dayEntries.filter((e) => e.type === 'income')) || null,
       sum(daySpend) || null,
-      { formula: d === 1 ? 'C2' : `D${r - 1}+C${r}`, result: 0 },
+      { formula: i === 0 ? `N(C${r})` : `D${r - 1}+N(C${r})`, result: running },
       dayEntries.length || null,
-      daySpend.map((e) => `${e.category} ${fmt(e.amount)}${e.note ? ` (${e.note})` : ''}`).join(', '),
+      dayEntries.map((e) => `${e.type === 'income' ? '+' : ''}${describeEntry(e)} ${fmt(e.amount)}`).join(' · '),
     ]);
     row.getCell(1).numFmt = XL_DATE;
     [2, 3, 4].forEach((c) => { row.getCell(c).numFmt = XL_MONEY; });
     row.getCell(2).font = { color: { argb: XL.green } };
     row.getCell(3).font = { color: { argb: XL.red } };
     row.getCell(6).alignment = { wrapText: true, vertical: 'top' };
-    xlZebra(row, d - 1);
-  }
-  // Fill in the running total's cached values so it shows before Excel recalculates.
-  let running = 0;
-  for (let d = 1; d <= period.lastDay; d++) {
-    running += Number(daily.getCell(d + 1, 3).value) || 0;
-    daily.getCell(d + 1, 4).value = { formula: daily.getCell(d + 1, 4).value.formula, result: running };
-  }
+    xlZebra(row, i);
+  });
 
   // ----- Boxes -----
   const bx = wb.addWorksheet('Boxes', { views: [{ state: 'frozen', ySplit: 1 }] });
   bx.columns = [
-    { header: 'Box', width: 30 }, { header: 'Balance now', width: 14 }, { header: 'Came in this month', width: 16 },
-    { header: 'Went out this month', width: 16 }, { header: 'Of which spent', width: 14 }, { header: 'Limit', width: 12 },
-    { width: 30 },
+    { header: 'Box', width: 30 }, { header: 'Balance now', width: 14 }, { header: 'Came in', width: 13 },
+    { header: 'Went out', width: 13 }, { header: 'Of which spent', width: 14 }, { header: 'Limit', width: 12 },
   ];
   xlHeader(bx.getRow(1));
   buckets.forEach((b, i) => {
@@ -1587,27 +1682,27 @@ function buildMonthWorkbook(ExcelJS, data) {
     [2, 3, 4, 5, 6].forEach((c) => { row.getCell(c).numFmt = XL_MONEY; });
     xlZebra(row, i);
   });
-  const bxTotal = bx.addRow(['Total',
-    { formula: `SUM(B2:B${buckets.length + 1})`, result: boxesTotal }]);
+  const bxTotal = bx.addRow(['Total', { formula: `SUM(B2:B${buckets.length + 1})`, result: boxesTotal }]);
   bxTotal.getCell(2).numFmt = XL_MONEY;
   xlTotal(bxTotal);
 
   let bRow = buckets.length + 4;
-  bx.getCell(bRow, 1).value = 'Every box move this month';
+  bx.getCell(bRow, 1).value = 'Every box move in this period';
   bx.getCell(bRow, 1).font = { bold: true, size: 12, color: { argb: XL.navy } };
   bRow += 1;
   ['Date', 'Out of', 'Into', 'Amount', 'Why', 'For'].forEach((h, i) => { bx.getCell(bRow, i + 1).value = h; });
   xlHeader(bx.getRow(bRow));
+  bx.getColumn(7).width = 10;
   boxMoves.forEach((m, i) => {
     const e = m.entry_id ? entryById[m.entry_id] : null;
     const row = bx.getRow(bRow + 1 + i);
     row.values = [
       xlDate(m.move_date),
-      m.from_bucket ? boxNames[m.from_bucket] || m.from_bucket : '(new money)',
+      m.from_bucket ? boxNames[m.from_bucket] || m.from_bucket : '(money in)',
       m.to_bucket ? boxNames[m.to_bucket] || m.to_bucket : '(spent)',
       Number(m.amount),
       moveReasonLabel(m.reason),
-      e ? [e.category, e.note].filter(Boolean).join(' - ') : '',
+      e ? describeEntry(e) : '',
     ];
     row.getCell(1).numFmt = XL_DATE;
     row.getCell(4).numFmt = XL_MONEY;
@@ -1630,7 +1725,7 @@ function buildMonthWorkbook(ExcelJS, data) {
       [2, 3, 4].forEach((c) => { row.getCell(c).numFmt = XL_MONEY; });
       xlZebra(row, i);
     });
-    let pRow = purses.length + 3;
+    const pRow = purses.length + 3;
     ['Date', 'Card', 'What', 'Amount', 'Note'].forEach((h, i) => { pc.getCell(pRow, i + 1).value = h; });
     xlHeader(pc.getRow(pRow));
     purseMoves.forEach((m, i) => {

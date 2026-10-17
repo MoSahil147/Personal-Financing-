@@ -14,8 +14,9 @@ router.post('/', async (req, res) => {
   // never touches the boxes - the boxes paid when the card was used.
   const isCardPayment = type === 'expense' && category === 'Credit Card Payment';
   const bucket = isCardPayment ? null : req.body?.bucket || null;
-  // A salary starts a new month: run the month-end close before splitting it.
-  const newMonth = type === 'income' && bucket === 'split' && req.body?.new_month === true;
+  // A salary starts a new month: run the month-end close before the money goes
+  // into the boxes (split across all of them or into one).
+  const newMonth = type === 'income' && bucket !== null && req.body?.new_month === true;
   // Topping up a prepaid card (e.g. a bus card) is spending that also adds to the card.
   const purseId = type === 'expense' && !isCardPayment ? req.body?.purse_id || null : null;
 

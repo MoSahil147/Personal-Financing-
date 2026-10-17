@@ -256,7 +256,12 @@
   <div id="export-modal" class="modal" hidden>
     <div class="modal-box">
       <h3>Download Excel</h3>
-      <label>Which month?</label>
+      <label>Period</label>
+      <select id="export-cycle">
+        <option value="calendar">Calendar month (1st to end)</option>
+        <option value="salary">Salary month (salary to next salary)</option>
+      </select>
+      <label id="export-month-label">Which month?</label>
       <div class="export-pickers">
         <select id="export-month"></select>
         <select id="export-year"></select>

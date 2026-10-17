@@ -1,5 +1,7 @@
 const express = require('express');
 const supabase = require('../services/supabase');
+const { todayISO } = require('../services/date');
+const { reportRange, addDays } = require('../services/period');
 
 const router = express.Router();
 
@@ -173,22 +175,33 @@ router.get('/yearly', async (req, res) => {
 });
 
 // Everything for one month's Excel report: the entries, every box and card
-// move dated in that month, and the boxes, cards and balances as they are now.
+// move dated in the period, and the boxes, cards and balances as they are now.
+// cycle=salary reports salary-to-salary instead of the calendar month.
 // Cards are optional - the report still works before the purses migration.
 router.get('/export', async (req, res) => {
   const year = Number(req.query.year);
   const month = Number(req.query.month);
+  const cycle = req.query.cycle === 'salary' ? 'salary' : 'calendar';
   if (!year || !month) return res.status(400).json({ error: 'year and month are required' });
-  const { start, end } = monthRange(year, month);
+
+  let salaryDates = [];
+  if (cycle === 'salary') {
+    const { data, error } = await supabase.from('entries').select('entry_date').eq('type', 'income').eq('category', 'Salary');
+    if (error) return res.status(500).json({ error: error.message });
+    salaryDates = data.map((e) => e.entry_date);
+  }
+  const range = reportRange({ year, month, cycle, today: todayISO(), salaryDates });
+  if (range.error) return res.status(400).json({ error: range.error });
+  const after = addDays(range.to, 1);
 
   const [entries, boxMoves, buckets, settings, purses, purseMoves] = await Promise.all([
-    supabase.from('entries').select('*').gte('entry_date', start).lt('entry_date', end)
+    supabase.from('entries').select('*').gte('entry_date', range.from).lt('entry_date', after)
       .order('entry_date').order('created_at'),
-    supabase.from('bucket_moves').select('*').gte('move_date', start).lt('move_date', end).order('created_at'),
+    supabase.from('bucket_moves').select('*').gte('move_date', range.from).lt('move_date', after).order('created_at'),
     supabase.from('buckets').select('*').order('sort'),
     supabase.from('settings').select('*').eq('id', 'main').single(),
     supabase.from('purses').select('*').order('sort').order('name'),
-    supabase.from('purse_moves').select('*').gte('move_date', start).lt('move_date', end).order('created_at'),
+    supabase.from('purse_moves').select('*').gte('move_date', range.from).lt('move_date', after).order('created_at'),
   ]);
   const failed = [entries, boxMoves, buckets, settings].find((r) => r.error);
   if (failed) return res.status(500).json({ error: failed.error.message });
@@ -196,6 +209,8 @@ router.get('/export', async (req, res) => {
   res.json({
     year,
     month,
+    cycle,
+    ...range,
     entries: entries.data,
     boxMoves: boxMoves.data,
     buckets: buckets.data,

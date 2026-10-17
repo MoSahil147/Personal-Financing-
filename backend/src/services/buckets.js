@@ -81,7 +81,8 @@ function planIncome(amount, category, newMonth, boxes) {
 
 // Moves money into/out of the boxes for a newly saved entry. `bucket` is a
 // box key, 'split' (income split by percentage), or null (leave boxes alone).
-// `newMonth` (a salary arriving) runs the month-end close before the split.
+// `newMonth` (a salary arriving) runs the month-end close first, then the
+// money goes in - split across all boxes or into the one box picked.
 // Every move is tied to the entry, so deleting the entry undoes all of it.
 async function applyEntry(entry, bucket, { newMonth = false } = {}) {
   if (!bucket) return;
@@ -91,17 +92,19 @@ async function applyEntry(entry, bucket, { newMonth = false } = {}) {
   if (entry.type === 'expense') {
     return applyMoves([{ from: bucket, amount }], { ...opts, reason: 'spend' });
   }
+  // A salary starts a new month whether it's split or put into one box.
+  if (newMonth) {
+    const { moves } = math.computeClose(toMap(await loadBuckets()));
+    await applyMoves(moves, { ...opts, reason: 'close' });
+  }
   if (bucket === 'split') {
-    if (newMonth) {
-      const { moves } = math.computeClose(toMap(await loadBuckets()));
-      await applyMoves(moves, { ...opts, reason: 'close' });
-    }
     const shares = splitFor(entry.category, amount, toMap(await loadBuckets()));
     // 'salary' marks the split that starts a new month (always has moves,
     // unlike the close, which can be empty when nothing is left over).
     return applyMoves(Object.entries(shares).map(([to, a]) => ({ to, amount: a })), { ...opts, reason: newMonth ? 'salary' : 'income' });
   }
-  return applyMoves([{ to: bucket, amount }], { ...opts, reason: entry.category === 'Refund' ? 'refund' : 'income' });
+  const reason = newMonth ? 'salary' : entry.category === 'Refund' ? 'refund' : 'income';
+  return applyMoves([{ to: bucket, amount }], { ...opts, reason });
 }
 
 // Read an entry's box moves BEFORE deleting the entry (the delete cascades
