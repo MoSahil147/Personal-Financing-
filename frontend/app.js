@@ -1211,6 +1211,8 @@ document.getElementById('confirm-save').addEventListener('click', async () => {
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const EXCELJS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
+// Pinned hash: the browser refuses the file if the CDN ever serves something else.
+const EXCELJS_SRI = 'sha384-Pqp51FUN2/qzfxZxBCtF0stpc9ONI6MYZpVqmo8m20SoaQCzf+arZvACkLkirlPz';
 
 // ExcelJS is big, so it's only loaded the first time a sheet is made.
 let excelJsLoading = null;
@@ -1219,6 +1221,8 @@ function loadExcelJs() {
   excelJsLoading ||= new Promise((resolve, reject) => {
     const script = document.createElement('script');
     script.src = EXCELJS_URL;
+    script.integrity = EXCELJS_SRI;
+    script.crossOrigin = 'anonymous';
     script.onload = () => resolve(window.ExcelJS);
     script.onerror = () => { excelJsLoading = null; reject(new Error("Couldn't load the Excel library - check your connection.")); };
     document.head.appendChild(script);
