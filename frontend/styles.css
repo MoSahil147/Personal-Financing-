@@ -419,7 +419,10 @@ canvas { max-width: 100%; }
 .box-card, #buffer-strip { cursor: pointer; }
 .box-card.open, #buffer-strip.open { outline: 1px solid var(--accent); }
 #box-detail { margin-top: 10px; background: #0d0f14; border: 1px solid var(--border); border-left-width: 3px; border-radius: 10px; padding: 10px 12px; }
-.box-detail-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.box-detail-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.detail-title { display: flex; justify-content: space-between; align-items: baseline; gap: 4px 8px; flex-wrap: wrap; flex: 1; min-width: 0; }
+.detail-close { flex: none; width: 32px; height: 32px; margin: -6px -6px 0 0; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--muted); font-size: 14px; line-height: 1; cursor: pointer; }
+.detail-close:hover { color: var(--text); border-color: var(--muted); }
 .box-detail-list { list-style: none; padding: 0; margin: 8px 0 0; max-height: 280px; overflow-y: auto; }
 .box-detail-list li { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
 .box-detail-list li:last-child { border-bottom: none; }

@@ -521,13 +521,18 @@ function toggleBoxDetail(key) {
   loadSection(renderBoxDetail, 'box activity');
 }
 
+// The ✕ on the activity panel closes it (same as tapping the box again).
+document.getElementById('box-detail').addEventListener('click', (e) => {
+  if (e.target.closest('.detail-close') && state.openBox) toggleBoxDetail(state.openBox);
+});
+
 async function renderBoxDetail() {
   const el = document.getElementById('box-detail');
   const key = state.openBox;
   el.hidden = !key;
   if (!key) return;
   el.style.borderColor = boxColor(key);
-  el.innerHTML = `<div class="box-detail-head"><strong>${escapeHtml(boxName(key))}</strong><span class="ledger-meta">Loading…</span></div>`;
+  el.innerHTML = `<div class="box-detail-head"><div class="detail-title"><strong>${escapeHtml(boxName(key))}</strong><span class="ledger-meta">Loading…</span></div><button type="button" class="detail-close" aria-label="Close">✕</button></div>`;
 
   const { since, moves } = await api(`/api/buckets/${encodeURIComponent(key)}/activity`);
   if (state.openBox !== key) return; // another box was opened while this loaded
@@ -554,8 +559,11 @@ async function renderBoxDetail() {
 
   el.innerHTML = `
     <div class="box-detail-head">
-      <strong>${escapeHtml(boxName(key))}</strong>
-      <span class="ledger-meta">${since ? `Since ${since.slice(0, 10)}` : 'All time'} · in ${fmt(added)} · out ${fmt(spent)}</span>
+      <div class="detail-title">
+        <strong>${escapeHtml(boxName(key))}</strong>
+        <span class="ledger-meta">${since ? `Since ${since.slice(0, 10)}` : 'All time'} · in ${fmt(added)} · out ${fmt(spent)}</span>
+      </div>
+      <button type="button" class="detail-close" aria-label="Close">✕</button>
     </div>
     <ul class="box-detail-list">${rows.join('') || '<li><span class="ledger-meta">Nothing in or out of this box this month.</span></li>'}</ul>`;
 }
@@ -721,12 +729,16 @@ function purseReasonLabel(reason) {
   return { topup: 'Top up', ride: 'Fare', adjust: 'Balance fixed' }[reason] || reason;
 }
 
+document.getElementById('purse-detail').addEventListener('click', (e) => {
+  if (e.target.closest('.detail-close') && state.openPurse) togglePurseDetail(state.openPurse);
+});
+
 async function renderPurseDetail() {
   const el = document.getElementById('purse-detail');
   const id = state.openPurse;
   el.hidden = !id || !state.purses.some((p) => p.id === id);
   if (el.hidden) return;
-  el.innerHTML = `<div class="box-detail-head"><strong>${escapeHtml(purseName(id))}</strong><span class="ledger-meta">Loading…</span></div>`;
+  el.innerHTML = `<div class="box-detail-head"><div class="detail-title"><strong>${escapeHtml(purseName(id))}</strong><span class="ledger-meta">Loading…</span></div><button type="button" class="detail-close" aria-label="Close">✕</button></div>`;
 
   const moves = await api(`/api/purses/${encodeURIComponent(id)}/moves`);
   if (state.openPurse !== id) return;
@@ -739,7 +751,7 @@ async function renderPurseDetail() {
     </li>`;
   });
   el.innerHTML = `
-    <div class="box-detail-head"><strong>${escapeHtml(purseName(id))}</strong><span class="ledger-meta">Last ${moves.length} moves</span></div>
+    <div class="box-detail-head"><div class="detail-title"><strong>${escapeHtml(purseName(id))}</strong><span class="ledger-meta">Last ${moves.length} moves</span></div><button type="button" class="detail-close" aria-label="Close">✕</button></div>
     <ul class="box-detail-list">${rows.join('') || '<li><span class="ledger-meta">Nothing on this card yet.</span></li>'}</ul>`;
 }
 
