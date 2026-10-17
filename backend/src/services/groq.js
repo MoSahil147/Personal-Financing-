@@ -27,6 +27,7 @@ async function classifyChat(text, { activeReminders = [], purses = [] } = {}) {
 Classify the user's message into exactly one intent:
 - "log_entry": they're logging money coming in or going out (salary, a purchase, a refund, a repayment, etc) - including cash purchases or someone paying them in cash.
 - "cash_withdrawal": they took cash out of the bank (an ATM withdrawal, "withdrew 200 cash", "took out 500 from the bank"). This moves money from bank to cash - it is NOT income or an expense, so never use "log_entry" for it. Extract withdrawal_amount.
+- "cash_deposit": they put cash on hand INTO the bank (a cash deposit machine/CDM, "deposited 500 cash", "put 300 cash in the bank", "deposit cash 200 to account"). This moves money from cash to bank - it is NOT income or an expense, so never use "log_entry" for it. Extract deposit_amount.
 - "card_ride": they paid a bus fare (or anything else) WITH one of their prepaid cards listed under PREPAID CARDS (e.g. "bus fare on card 1234", "paid 4 with the bus card"). The money is already spent from the card, so this is NOT a log_entry. Extract ride_amount and purse (the card's name from the list, or the number the user said).
 - "add_reminder": they want something remembered/tracked as a to-do (e.g. "remind me to pay rent on the 1st", "these are the reminders: pay internet bill", "add a reminder to renew visa"). Infer reminder_priority 1-5 (5 = most important) from urgency/importance language - "urgent"/"important"/"asap"/"critical" -> 4-5, plain/casual mentions -> 3, "whenever"/"low priority"/"not urgent" -> 1-2. Default to 3 if nothing suggests otherwise.
 - "remove_reminder": they want an EXISTING reminder taken off the list (e.g. "remove the rent reminder", "done with the internet bill one", "delete that reminder about visa"). Match it against the ACTIVE REMINDERS list below by meaning and return its id. If nothing matches clearly, use remove_reminder_id: null.
@@ -60,11 +61,12 @@ Quick test for travel: office commute (or no purpose given) -> transport; to a r
 
 Respond with ONLY a JSON object, no prose, matching this exact shape:
 {
-  "intent": "log_entry" | "cash_withdrawal" | "card_ride" | "add_reminder" | "remove_reminder" | "chat",
+  "intent": "log_entry" | "cash_withdrawal" | "cash_deposit" | "card_ride" | "add_reminder" | "remove_reminder" | "chat",
   "entry": { "type": "income"|"expense", "amount": number|null, "category": string, "classification": "need"|"want"|"luxury"|"savings"|"investment"|null, "payment_method": "debit"|"credit"|"cash"|null, "date": "YYYY-MM-DD", "note": string, "bucket": string, "purse": string|null } | null,
   "ride_amount": number | null,
   "purse": string | null,
   "withdrawal_amount": number | null,
+  "deposit_amount": number | null,
   "reminder_text": string | null,
   "reminder_due_date": "YYYY-MM-DD" | null,
   "reminder_priority": number | null,

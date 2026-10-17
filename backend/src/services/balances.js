@@ -50,4 +50,23 @@ async function withdrawCash(amount) {
   return data;
 }
 
-module.exports = { getSettings, applyEntryBalanceEffect, withdrawCash };
+// Putting cash on hand into the bank (a cash deposit) - the reverse of a
+// withdrawal, also a pure transfer, so the boxes don't change.
+async function depositCash(amount) {
+  const settings = await getSettings();
+  const cash = Number(settings.cash_balance);
+  if (Number(amount) > cash + 0.005) throw new Error(`You only have ${cash.toFixed(2)} cash on hand`);
+  const { data, error } = await supabase
+    .from('settings')
+    .update({
+      bank_balance: Number(settings.bank_balance) + Number(amount),
+      cash_balance: cash - Number(amount),
+    })
+    .eq('id', 'main')
+    .select()
+    .single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+module.exports = { getSettings, applyEntryBalanceEffect, withdrawCash, depositCash };

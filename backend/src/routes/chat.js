@@ -67,6 +67,11 @@ router.post('/', async (req, res) => {
       return res.json({ intent: 'cash_withdrawal', amount: result.withdrawal_amount });
     }
 
+    if (result.intent === 'cash_deposit') {
+      // Amount can be missing - the popup asks for it.
+      return res.json({ intent: 'cash_deposit', amount: result.deposit_amount || null });
+    }
+
     if (result.intent === 'card_ride') {
       if (!cards.length) return res.json({ intent: 'chat', reply: 'No cards set up yet.' });
       const card = purses.matchPurse(cards, result.purse);

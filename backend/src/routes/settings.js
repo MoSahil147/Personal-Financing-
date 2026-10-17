@@ -1,6 +1,6 @@
 const express = require('express');
 const supabase = require('../services/supabase');
-const { getSettings, withdrawCash } = require('../services/balances');
+const { getSettings, withdrawCash, depositCash } = require('../services/balances');
 const { todayISO } = require('../services/date');
 
 const router = express.Router();
@@ -120,6 +120,18 @@ router.post('/withdraw-cash', async (req, res) => {
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Deposit cash on hand into the bank: moves money from cash_balance to
+// bank_balance. The reverse of a withdrawal - also a pure transfer.
+router.post('/deposit-cash', async (req, res) => {
+  const n = Number(req.body?.amount);
+  if (!n || n <= 0) return res.status(400).json({ error: 'amount must be a positive number' });
+  try {
+    res.json(await depositCash(n));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
 });
 

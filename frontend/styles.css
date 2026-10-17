@@ -469,3 +469,8 @@ canvas { max-width: 100%; }
   padding: 16px 20px 12px;
   border-bottom: 1px solid var(--border);
 }
+
+/* Cash <-> bank buttons under Cash on Hand */
+.move-money-btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.move-money-btns button { flex: 1; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel); color: var(--text); cursor: pointer; font-size: 12px; white-space: nowrap; min-width: 0; }
+.move-money-btns button:first-child { background: var(--accent); border-color: var(--accent); color: white; }

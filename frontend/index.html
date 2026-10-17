@@ -28,6 +28,10 @@
         <div class="balance-box">
           <div class="label">Cash on Hand</div>
           <div class="value" id="cash-balance">-</div>
+          <div class="move-money-btns">
+            <button type="button" id="deposit-cash-btn">Deposit</button>
+            <button type="button" id="withdraw-cash-btn">Withdraw</button>
+          </div>
         </div>
         <div class="balance-box credit" id="credit-box">
           <div class="label">Owed on Credit Card</div>
@@ -254,6 +258,26 @@
         <input type="text" id="card-modal-note" placeholder="e.g. office" />
       </div>
       <div id="card-modal-hint" class="confirm-hint"></div>
+    </div>
+  </div>
+
+  <div id="move-modal" class="modal" hidden>
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3>Move money</h3>
+        <div class="modal-actions">
+          <button id="move-cancel" class="btn-secondary" type="button">Cancel</button>
+          <button id="move-save" class="btn-primary" type="button">Save</button>
+        </div>
+      </div>
+      <label>What happened</label>
+      <select id="move-direction">
+        <option value="deposit">Deposited cash into the bank</option>
+        <option value="withdraw">Withdrew cash from the bank</option>
+      </select>
+      <label>Amount</label>
+      <input type="number" id="move-amount" step="0.01" min="0" inputmode="decimal" />
+      <div id="move-hint" class="confirm-hint"></div>
     </div>
   </div>
 

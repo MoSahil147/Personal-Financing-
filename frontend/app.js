@@ -355,6 +355,8 @@ async function refreshBalances() {
   const settings = await api('/api/settings');
   const bank = Number(settings.bank_balance);
   const cash = Number(settings.cash_balance);
+  state.bank = bank;
+  state.cash = cash;
   document.getElementById('bank-balance').textContent = `${bank.toFixed(2)} AED`;
   document.getElementById('cash-balance').textContent = `${cash.toFixed(2)} AED`;
   const owed = Number(settings.credit_outstanding);
@@ -375,6 +377,57 @@ document.getElementById('settle-credit-btn').addEventListener('click', async () 
     refreshMonthly();
   } catch (err) {
     alert(err.message);
+  }
+});
+
+// Cash <-> bank. Both are your own money changing place, so neither counts as
+// income or spending and the boxes don't change.
+function openMoveModal(direction, amount = null) {
+  document.getElementById('move-direction').value = direction;
+  document.getElementById('move-amount').value = amount ?? '';
+  updateMoveHint();
+  document.getElementById('move-modal').hidden = false;
+  document.getElementById('move-amount').focus();
+}
+
+async function updateMoveHint() {
+  const deposit = document.getElementById('move-direction').value === 'deposit';
+  const amount = Number(document.getElementById('move-amount').value) || 0;
+  const hint = document.getElementById('move-hint');
+  const bank = state.bank ?? 0;
+  const cash = state.cash ?? 0;
+  const newBank = deposit ? bank + amount : bank - amount;
+  const newCash = deposit ? cash - amount : cash + amount;
+  hint.innerHTML = `Bank ${fmt(bank)} → <strong>${fmt(newBank)}</strong> · Cash ${fmt(cash)} → <strong>${fmt(newCash)}</strong><br>`
+    + `Total capital stays ${fmt(bank + cash)} - just your own money changing place, not income or spending, so your boxes don't change.`
+    + (newCash < 0 ? ' <span class="bad">That\'s more cash than you have.</span>' : '');
+}
+
+document.getElementById('deposit-cash-btn').addEventListener('click', () => openMoveModal('deposit'));
+document.getElementById('withdraw-cash-btn').addEventListener('click', () => openMoveModal('withdraw'));
+document.getElementById('move-direction').addEventListener('change', updateMoveHint);
+document.getElementById('move-amount').addEventListener('input', updateMoveHint);
+document.getElementById('move-cancel').addEventListener('click', () => { document.getElementById('move-modal').hidden = true; });
+
+document.getElementById('move-save').addEventListener('click', async () => {
+  const deposit = document.getElementById('move-direction').value === 'deposit';
+  const amount = Number(document.getElementById('move-amount').value);
+  if (!(amount > 0)) {
+    alert('Enter the amount.');
+    return;
+  }
+  const btn = document.getElementById('move-save');
+  if (btn.disabled) return;
+  btn.disabled = true;
+  try {
+    await api(`/api/settings/${deposit ? 'deposit-cash' : 'withdraw-cash'}`, { method: 'POST', body: JSON.stringify({ amount }) });
+    document.getElementById('move-modal').hidden = true;
+    loadSection(refreshBalances, 'balances');
+    loadSection(refreshBoxes, 'boxes');
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    btn.disabled = false;
   }
 });
 
@@ -1012,10 +1065,9 @@ async function sendChat() {
     if (result.intent === 'log_entry') {
       openConfirmModal(result.suggestion, result.raw_input);
     } else if (result.intent === 'cash_withdrawal') {
-      if (confirm(`Withdraw ${Number(result.amount).toFixed(2)} from the bank to cash?`)) {
-        await api('/api/settings/withdraw-cash', { method: 'POST', body: JSON.stringify({ amount: result.amount }) });
-        refreshBalances();
-      }
+      openMoveModal('withdraw', result.amount);
+    } else if (result.intent === 'cash_deposit') {
+      openMoveModal('deposit', result.amount);
     } else if (result.intent === 'card_ride') {
       openCardModal(result.purse_id, 'ride', { amount: result.amount });
     } else if (result.intent === 'add_reminder') {
