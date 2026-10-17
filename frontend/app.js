@@ -80,6 +80,7 @@ const state = {
   boxPieMode: 'balances',
   boxPieChart: null,
   ccPieChart: null,
+  openBox: null, // box whose activity is shown below the grid
 };
 
 // ---------- auth ----------
@@ -428,11 +429,16 @@ async function refreshBoxes() {
       <div class="box-balance ${b.balance < 0 ? 'bad' : ''}">${fmt(b.balance)}</div>
       <div class="box-spent">Spent this month: ${fmt(state.boxSpent[b.key] || 0)}</div>
       ${b.cap ? capBar(b.key, b.balance, Number(b.cap)) : ''}`;
+    card.classList.toggle('open', state.openBox === b.key);
+    card.addEventListener('click', () => toggleBoxDetail(b.key));
     grid.appendChild(card);
   }
 
   const buffer = state.boxes.find((b) => b.key === 'buffer');
-  document.getElementById('buffer-strip').innerHTML = buffer
+  const bufferStrip = document.getElementById('buffer-strip');
+  bufferStrip.classList.toggle('open', state.openBox === 'buffer');
+  bufferStrip.onclick = buffer ? () => toggleBoxDetail('buffer') : null;
+  bufferStrip.innerHTML = buffer
     ? `<div class="buffer-top">
          <span>Buffer <span class="box-percent">leftovers</span></span>
          <span class="buffer-value ${buffer.balance < 0 ? 'bad' : ''}">${fmt(buffer.balance)}</span>
@@ -445,7 +451,58 @@ async function refreshBoxes() {
     : '';
 
   renderBoxPie();
-  await refreshBoxHistory();
+  await Promise.all([refreshBoxHistory(), renderBoxDetail()]);
+}
+
+// Clicking a box (or the buffer) opens its activity for this month below the
+// grid; clicking the same one again closes it.
+function toggleBoxDetail(key) {
+  state.openBox = state.openBox === key ? null : key;
+  document.querySelectorAll('#boxes-grid .box-card').forEach((card, i) => {
+    const keys = state.boxes.filter((b) => b.key !== 'buffer').map((b) => b.key);
+    card.classList.toggle('open', keys[i] === state.openBox);
+  });
+  document.getElementById('buffer-strip').classList.toggle('open', state.openBox === 'buffer');
+  loadSection(renderBoxDetail, 'box activity');
+}
+
+async function renderBoxDetail() {
+  const el = document.getElementById('box-detail');
+  const key = state.openBox;
+  el.hidden = !key;
+  if (!key) return;
+  el.style.borderColor = boxColor(key);
+  el.innerHTML = `<div class="box-detail-head"><strong>${escapeHtml(boxName(key))}</strong><span class="ledger-meta">Loading…</span></div>`;
+
+  const { since, moves } = await api(`/api/buckets/${encodeURIComponent(key)}/activity`);
+  if (state.openBox !== key) return; // another box was opened while this loaded
+
+  let spent = 0;
+  let added = 0;
+  const rows = moves.map((m) => {
+    const out = m.from_bucket === key;
+    if (out) spent += Number(m.amount); else added += Number(m.amount);
+    const other = out ? m.to_bucket : m.from_bucket;
+    // A spend/refund shows what it was for; a box-to-box move shows the other box.
+    const title = m.entries?.category
+      ? m.entries.category
+      : other ? `${out ? 'To' : 'From'} ${boxName(other)}` : moveReasonLabel(m.reason);
+    const meta = [m.move_date, moveReasonLabel(m.reason)];
+    if (m.entries?.category && other) meta.push(`${out ? 'to' : 'from'} ${boxName(other)}`);
+    if (m.entries?.payment_method === 'credit') meta.push('card');
+    if (m.entries?.note) meta.push(m.entries.note);
+    return `<li>
+      <span><strong>${escapeHtml(title)}</strong><span class="ledger-meta">${escapeHtml(meta.join(' · '))}</span></span>
+      <span class="${out ? 'bad' : 'good'}">${out ? '−' : '+'}${fmt(m.amount)}</span>
+    </li>`;
+  });
+
+  el.innerHTML = `
+    <div class="box-detail-head">
+      <strong>${escapeHtml(boxName(key))}</strong>
+      <span class="ledger-meta">${since ? `Since ${since.slice(0, 10)}` : 'All time'} · in ${fmt(added)} · out ${fmt(spent)}</span>
+    </div>
+    <ul class="box-detail-list">${rows.join('') || '<li><span class="ledger-meta">Nothing in or out of this box this month.</span></li>'}</ul>`;
 }
 
 async function renderSetupPreview() {
@@ -811,7 +868,7 @@ function updateBucketOptions(selected) {
   const isExpense = document.getElementById('confirm-type').value === 'expense';
   const select = document.getElementById('confirm-bucket');
   const options = [];
-  if (!isExpense) options.push({ value: 'split', label: 'Split by % across all boxes' });
+  if (!isExpense) options.push({ value: 'split', label: 'All boxes (split by %)' });
   for (const b of state.boxes) {
     if (b.key !== 'buffer') options.push({ value: b.key, label: `${b.name} (${fmt(b.balance)})` });
   }

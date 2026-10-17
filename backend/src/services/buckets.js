@@ -182,6 +182,22 @@ async function spentThisMonth() {
   return spent;
 }
 
+// Everything that went in or out of one box since the current month started,
+// newest first, with the entry behind each move (category, note) when there is one.
+async function boxActivity(key) {
+  if (!math.BUCKET_KEYS.includes(key)) throw new Error(`Unknown box: ${key}`);
+  const since = await monthStartedAt();
+  let query = supabase
+    .from('bucket_moves')
+    .select('*, entries(category, note, payment_method)')
+    .or(`from_bucket.eq.${key},to_bucket.eq.${key}`)
+    .order('created_at', { ascending: false });
+  if (since) query = query.gte('created_at', since);
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return { since, moves: data };
+}
+
 async function overview() {
   const [buckets, real, spent, used] = await Promise.all([loadBuckets(), realMoney(), spentThisMonth(), hasAnyMoves()]);
   const total = math.round2(buckets.reduce((s, b) => s + b.balance, 0));
@@ -214,4 +230,5 @@ module.exports = {
   splitPreview,
   overview,
   recentMoves,
+  boxActivity,
 };

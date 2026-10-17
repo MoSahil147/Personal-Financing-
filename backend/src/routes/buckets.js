@@ -20,6 +20,15 @@ router.get('/moves', async (_req, res) => {
   }
 });
 
+// One box's moves since the current month started (for the box detail view).
+router.get('/:key/activity', async (req, res) => {
+  try {
+    res.json(await buckets.boxActivity(req.params.key));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // Preview an income split for the confirm modal: the month-end moves first
 // (when new_month=1, i.e. a salary starting a new month), then the split.
 router.get('/split-preview', async (req, res) => {

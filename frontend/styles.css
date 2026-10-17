@@ -415,3 +415,14 @@ canvas { max-width: 100%; }
   .tab-buttons button { flex: 1; }
   #chat-bar { padding: 10px 12px; }
 }
+
+.box-card, #buffer-strip { cursor: pointer; }
+.box-card.open, #buffer-strip.open { outline: 1px solid var(--accent); }
+#box-detail { margin-top: 10px; background: #0d0f14; border: 1px solid var(--border); border-left-width: 3px; border-radius: 10px; padding: 10px 12px; }
+.box-detail-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.box-detail-list { list-style: none; padding: 0; margin: 8px 0 0; max-height: 280px; overflow-y: auto; }
+.box-detail-list li { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.box-detail-list li:last-child { border-bottom: none; }
+.box-detail-list li > span:first-child { display: flex; flex-direction: column; min-width: 0; }
+.box-detail-list .bad { color: var(--danger); }
+.box-detail-list .good { color: var(--good); }
