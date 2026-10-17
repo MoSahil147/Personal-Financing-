@@ -186,7 +186,13 @@
 
   <div id="confirm-modal" hidden>
     <div id="confirm-box">
-      <h3>Confirm entry</h3>
+      <div class="modal-head">
+        <h3>Confirm entry</h3>
+        <div id="confirm-actions">
+          <button id="confirm-cancel">Cancel</button>
+          <button id="confirm-save">Save</button>
+        </div>
+      </div>
       <label>Type</label>
       <select id="confirm-type">
         <option value="expense">Expense</option>
@@ -222,16 +228,18 @@
       <input type="date" id="confirm-date" />
       <label>Note</label>
       <input type="text" id="confirm-note" />
-      <div id="confirm-actions">
-        <button id="confirm-cancel">Cancel</button>
-        <button id="confirm-save">Save</button>
-      </div>
     </div>
   </div>
 
   <div id="card-modal" class="modal" hidden>
     <div class="modal-box">
-      <h3 id="card-modal-title">Bus card</h3>
+      <div class="modal-head">
+        <h3 id="card-modal-title">Bus card</h3>
+        <div class="modal-actions">
+          <button id="card-modal-cancel" class="btn-secondary" type="button">Cancel</button>
+          <button id="card-modal-save" class="btn-primary" type="button">Save</button>
+        </div>
+      </div>
       <label>Card</label>
       <select id="card-modal-purse"></select>
       <label>What happened</label>
@@ -246,16 +254,18 @@
         <input type="text" id="card-modal-note" placeholder="e.g. office" />
       </div>
       <div id="card-modal-hint" class="confirm-hint"></div>
-      <div class="modal-actions">
-        <button id="card-modal-cancel" class="btn-secondary" type="button">Cancel</button>
-        <button id="card-modal-save" class="btn-primary" type="button">Save</button>
-      </div>
     </div>
   </div>
 
   <div id="export-modal" class="modal" hidden>
     <div class="modal-box">
-      <h3>Download Excel</h3>
+      <div class="modal-head">
+        <h3>Download Excel</h3>
+        <div class="modal-actions">
+          <button id="export-cancel" class="btn-secondary" type="button">Cancel</button>
+          <button id="export-go" class="btn-primary" type="button">Download</button>
+        </div>
+      </div>
       <label>Period</label>
       <select id="export-cycle">
         <option value="calendar">Calendar month (1st to end)</option>
@@ -267,10 +277,6 @@
         <select id="export-year"></select>
       </div>
       <div id="export-hint" class="confirm-hint"></div>
-      <div class="modal-actions">
-        <button id="export-cancel" class="btn-secondary" type="button">Cancel</button>
-        <button id="export-go" class="btn-primary" type="button">Download</button>
-      </div>
     </div>
   </div>
 

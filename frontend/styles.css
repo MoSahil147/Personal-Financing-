@@ -315,7 +315,7 @@ canvas { max-width: 100%; }
   max-height: calc(100vh - 32px);
   overflow-y: auto;
 }
-#confirm-box h3, .modal-box h3 { margin: 0 0 14px; font-size: 15px; }
+#confirm-box h3, .modal-box h3 { margin: 0; font-size: 15px; }
 #confirm-box label, .modal-box label { display: block; font-size: 12px; color: var(--muted); margin-top: 10px; margin-bottom: 4px; }
 #confirm-box input, #confirm-box select, .modal-box input, .modal-box select {
   width: 100%;
@@ -325,7 +325,7 @@ canvas { max-width: 100%; }
   background: #0d0f14;
   color: var(--text);
 }
-#confirm-actions, .modal-actions { display: flex; gap: 8px; margin-top: 16px; }
+#confirm-actions, .modal-actions { display: flex; gap: 8px; margin-top: 10px; }
 #confirm-actions button, .modal-actions button {
   flex: 1;
   padding: 10px;
@@ -457,4 +457,15 @@ canvas { max-width: 100%; }
   .purse-actions { flex-direction: column; }
   .modal, #confirm-modal { align-items: flex-end; padding: 0; }
   .modal-box, #confirm-box { max-width: none; border-radius: 14px 14px 0 0; padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px)); max-height: 90vh; }
+}
+
+/* Title + Cancel/Save stay pinned at the top while the form scrolls. */
+.modal-head {
+  position: sticky;
+  top: -20px;
+  z-index: 1;
+  background: var(--panel);
+  margin: -20px -20px 4px;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--border);
 }
