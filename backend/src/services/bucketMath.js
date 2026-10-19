@@ -215,6 +215,34 @@ function computeClose(boxes) {
   return { balances: bal, moves };
 }
 
+// Money that isn't in any box (real money minus what the boxes add up to)
+// goes into Emergency up to its limit, then Investing. If the boxes say more
+// than you actually have, the difference comes out of Emergency, then
+// Investing, so the boxes always add up to your real money.
+function computeSweep(gap, boxes) {
+  const amount = round2(gap);
+  if (Math.abs(amount) < 0.01) return [];
+  const bal = (key) => Number(boxes[key].balance);
+  const cap = (key) => (boxes[key].cap == null ? Infinity : Number(boxes[key].cap));
+  const moves = [];
+  if (amount > 0) {
+    const toEmergency = round2(Math.min(amount, Math.max(0, cap('emergency') - bal('emergency'))));
+    if (toEmergency > 0) moves.push({ to: 'emergency', amount: toEmergency });
+    const rest = round2(amount - toEmergency);
+    if (rest > 0) moves.push({ to: 'investing', amount: rest });
+    return moves;
+  }
+  let missing = -amount;
+  const fromEmergency = round2(Math.min(missing, Math.max(0, bal('emergency'))));
+  missing = round2(missing - fromEmergency);
+  const fromInvesting = round2(Math.min(missing, Math.max(0, bal('investing'))));
+  missing = round2(missing - fromInvesting);
+  const emergencyTotal = round2(fromEmergency + missing);
+  if (emergencyTotal > 0) moves.push({ from: 'emergency', amount: emergencyTotal });
+  if (fromInvesting > 0) moves.push({ from: 'investing', amount: fromInvesting });
+  return moves;
+}
+
 module.exports = {
   BUCKET_KEYS,
   PICKABLE_KEYS,
@@ -225,4 +253,5 @@ module.exports = {
   computeSalarySplit,
   computeSetup,
   computeClose,
+  computeSweep,
 };

@@ -469,10 +469,6 @@ async function refreshBoxes() {
 
   document.getElementById('boxes-total').textContent = `${fmt(data.total)} AED`;
   document.getElementById('boxes-real').textContent = `${fmt(data.realMoney)} AED`;
-  const chip = document.getElementById('boxes-unallocated');
-  chip.hidden = data.needsSetup || Math.abs(data.unallocated) <= 1;
-  chip.textContent = `Not in a box: ${fmt(data.unallocated)}`;
-  chip.classList.toggle('bad', data.unallocated < 0);
 
   document.getElementById('boxes-setup').hidden = !data.needsSetup;
   if (data.needsSetup) await renderSetupPreview();
@@ -640,7 +636,7 @@ document.getElementById('box-pie-spent').addEventListener('click', () => setBoxP
 
 function moveReasonLabel(reason) {
   return {
-    setup: 'Starting split', income: 'Money in', salary: 'Salary', refund: 'Refund', spend: 'Spent', close: 'Month end (salary)',
+    setup: 'Starting split', income: 'Money in', salary: 'Salary', refund: 'Refund', spend: 'Spent', close: 'Month end (salary)', sweep: 'Money not in a box',
   }[reason] || reason;
 }
 

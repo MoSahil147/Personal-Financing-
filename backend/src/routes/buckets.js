@@ -1,11 +1,13 @@
 const express = require('express');
 const buckets = require('../services/buckets');
+const { exclusive } = require('../middleware/moneyLock');
 
 const router = express.Router();
 
-// All boxes + totals. Runs any month-end close that's due first.
+// All boxes + totals. Any money not in a box is first moved into Emergency.
 router.get('/', async (_req, res) => {
   try {
+    await exclusive(() => buckets.sweepUnallocated());
     res.json(await buckets.overview());
   } catch (err) {
     res.status(500).json({ error: err.message });

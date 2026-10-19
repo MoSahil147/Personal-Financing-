@@ -201,6 +201,15 @@ async function boxActivity(key) {
   return { since, moves: data };
 }
 
+// Puts any money that isn't in a box into Emergency (see computeSweep). Runs
+// only after the starting split, which is what first fills the boxes.
+async function sweepUnallocated() {
+  if (!(await hasAnyMoves())) return;
+  const [boxes, real] = await Promise.all([loadBuckets(), realMoney()]);
+  const total = boxes.reduce((s, b) => s + b.balance, 0);
+  await applyMoves(math.computeSweep(real - total, toMap(boxes)), { reason: 'sweep' });
+}
+
 async function overview() {
   const [buckets, real, spent, used] = await Promise.all([loadBuckets(), realMoney(), spentThisMonth(), hasAnyMoves()]);
   const total = math.round2(buckets.reduce((s, b) => s + b.balance, 0));
@@ -232,6 +241,7 @@ module.exports = {
   setupFromCurrentMoney,
   splitPreview,
   overview,
+  sweepUnallocated,
   recentMoves,
   boxActivity,
 };

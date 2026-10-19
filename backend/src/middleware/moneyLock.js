@@ -56,4 +56,13 @@ function moneyLock(req, res, next) {
   });
 }
 
+// Runs fn with the same one-at-a-time guarantee, for money changes made
+// outside a request that changes money (e.g. while loading the boxes).
+function exclusive(fn) {
+  const run = tail.then(fn);
+  tail = run.catch(() => {});
+  return run;
+}
+
 module.exports = moneyLock;
+module.exports.exclusive = exclusive;
