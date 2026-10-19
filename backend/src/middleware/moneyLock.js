@@ -32,7 +32,9 @@ function moneyLock(req, res, next) {
     res.on('finish', () => { clearTimeout(timer); release(); });
     res.on('close', () => { clearTimeout(timer); release(); });
 
-    const key = req.get('Idempotency-Key');
+    const given = req.get('Idempotency-Key');
+    // Tied to the exact request, so a key can only ever replay its own answer.
+    const key = given && given.length <= 100 ? `${req.method} ${req.originalUrl} ${given}` : null;
     if (key) {
       forgetOld(Date.now());
       const earlier = seen.get(key);
