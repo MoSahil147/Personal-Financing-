@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 
 const requireAuth = require('./src/middleware/auth');
+const moneyLock = require('./src/middleware/moneyLock');
 const authRoutes = require('./src/routes/auth');
 const entryRoutes = require('./src/routes/entries');
 const budgetRoutes = require('./src/routes/budgets');
@@ -21,14 +22,14 @@ app.get('/health', (_req, res) => res.json({ ok: true }));
 
 app.use('/auth', authRoutes);
 
-app.use('/api/entries', requireAuth, entryRoutes);
+app.use('/api/entries', requireAuth, moneyLock, entryRoutes);
 app.use('/api/budgets', requireAuth, budgetRoutes);
 app.use('/api/reminders', requireAuth, reminderRoutes);
 app.use('/api/summary', requireAuth, summaryRoutes);
-app.use('/api/settings', requireAuth, settingsRoutes);
+app.use('/api/settings', requireAuth, moneyLock, settingsRoutes);
 app.use('/api/chat', requireAuth, chatRoutes);
-app.use('/api/buckets', requireAuth, bucketRoutes);
-app.use('/api/purses', requireAuth, purseRoutes);
+app.use('/api/buckets', requireAuth, moneyLock, bucketRoutes);
+app.use('/api/purses', requireAuth, moneyLock, purseRoutes);
 
 const port = process.env.PORT || 4000;
 app.listen(port, () => console.log(`Backend listening on port ${port}`));

@@ -113,6 +113,10 @@ function hideConnectionBanner() {
 const RETRY_DELAYS_MS = [2000, 4000, 8000, 8000];
 
 async function api(path, options = {}) {
+  // Same key on every retry of one change, so the server never applies it twice.
+  const method = (options.method || 'GET').toUpperCase();
+  const idempotencyKey = method === 'GET' ? null
+    : (crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
   for (let attempt = 0; ; attempt++) {
     let res;
     try {
@@ -121,6 +125,7 @@ async function api(path, options = {}) {
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${getToken()}`,
+          ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
           ...(options.headers || {}),
         },
       });
@@ -1268,7 +1273,8 @@ document.getElementById('confirm-save').addEventListener('click', async () => {
     const saved = await api('/api/entries', { method: 'POST', body: JSON.stringify(payload) });
     document.getElementById('confirm-modal').hidden = true;
     state.pendingSuggestion = null;
-    if (saved?.bucket_warning) alert(`Saved, but the boxes weren't updated: ${saved.bucket_warning}`);
+    if (saved?.balance_warning) alert(`Saved, but the bank/cash balance wasn't updated: ${saved.balance_warning}`);
+    else if (saved?.bucket_warning) alert(`Saved, but the boxes weren't updated: ${saved.bucket_warning}`);
 
     refreshBalances();
     loadSection(refreshBoxes, 'boxes');
