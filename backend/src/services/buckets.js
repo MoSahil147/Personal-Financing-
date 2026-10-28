@@ -210,6 +210,13 @@ async function sweepUnallocated() {
   await applyMoves(math.computeSweep(real - total, toMap(boxes)), { reason: 'sweep' });
 }
 
+// Moves money from one box to another (all of it when amount is null).
+async function transfer(from, to, amount) {
+  const move = math.computeTransfer(from, to, amount, toMap(await loadBuckets()));
+  await applyMoves([move], { reason: 'transfer' });
+  return move;
+}
+
 async function overview() {
   const [buckets, real, spent, used] = await Promise.all([loadBuckets(), realMoney(), spentThisMonth(), hasAnyMoves()]);
   const total = math.round2(buckets.reduce((s, b) => s + b.balance, 0));
@@ -242,6 +249,7 @@ module.exports = {
   splitPreview,
   overview,
   sweepUnallocated,
+  transfer,
   recentMoves,
   boxActivity,
 };

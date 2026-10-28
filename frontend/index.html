@@ -58,6 +58,7 @@
     <div class="card" id="boxes-card">
       <div class="boxes-head">
         <h2>My Boxes</h2>
+        <button type="button" id="transfer-open-btn" class="btn-secondary">Move between boxes</button>
       </div>
       <div class="boxes-totals">
         <span>In boxes <strong id="boxes-total">-</strong></span>
@@ -277,6 +278,29 @@
       <label>Amount</label>
       <input type="number" id="move-amount" step="0.01" min="0" inputmode="decimal" />
       <div id="move-hint" class="confirm-hint"></div>
+    </div>
+  </div>
+
+  <div id="transfer-modal" class="modal" hidden>
+    <div class="modal-box">
+      <div class="modal-head">
+        <h3>Move between boxes</h3>
+        <div class="modal-actions">
+          <button id="transfer-cancel" class="btn-secondary" type="button">Cancel</button>
+          <button id="transfer-save" class="btn-primary" type="button">Move</button>
+        </div>
+      </div>
+      <label>From</label>
+      <select id="transfer-from"></select>
+      <label>To</label>
+      <select id="transfer-to"></select>
+      <label>Amount</label>
+      <input type="number" id="transfer-amount" step="0.01" min="0" inputmode="decimal" />
+      <label class="confirm-check">
+        <input type="checkbox" id="transfer-all" />
+        <span>Move everything in the box</span>
+      </label>
+      <div id="transfer-hint" class="confirm-hint"></div>
     </div>
   </div>
 

@@ -436,6 +436,71 @@ document.getElementById('move-save').addEventListener('click', async () => {
   }
 });
 
+// Box to box. Real money doesn't change, only which box it sits in.
+function openTransferModal({ from = null, to = null, amount = null, all = false } = {}) {
+  const options = state.boxes.map((b) => `<option value="${b.key}">${escapeHtml(b.name)}</option>`).join('');
+  const fromSel = document.getElementById('transfer-from');
+  const toSel = document.getElementById('transfer-to');
+  fromSel.innerHTML = `<option value="">Pick a box</option>${options}`;
+  toSel.innerHTML = `<option value="">Pick a box</option>${options}`;
+  fromSel.value = from || '';
+  toSel.value = to || '';
+  document.getElementById('transfer-amount').value = amount ?? '';
+  document.getElementById('transfer-all').checked = all;
+  updateTransferHint();
+  document.getElementById('transfer-modal').hidden = false;
+}
+
+function updateTransferHint() {
+  const from = state.boxes.find((b) => b.key === document.getElementById('transfer-from').value);
+  const to = state.boxes.find((b) => b.key === document.getElementById('transfer-to').value);
+  const all = document.getElementById('transfer-all').checked;
+  const amountInput = document.getElementById('transfer-amount');
+  amountInput.disabled = all;
+  if (all && from) amountInput.value = from.balance;
+  const hint = document.getElementById('transfer-hint');
+  if (!from || !to) { hint.innerHTML = ''; return; }
+  if (from.key === to.key) { hint.innerHTML = '<span class="bad">Pick two different boxes.</span>'; return; }
+  const amount = Number(amountInput.value) || 0;
+  const newTo = to.balance + amount;
+  hint.innerHTML = `${escapeHtml(from.name)} ${fmt(from.balance)} → <strong>${fmt(from.balance - amount)}</strong> · `
+    + `${escapeHtml(to.name)} ${fmt(to.balance)} → <strong>${fmt(newTo)}</strong><br>Your real money stays the same - only the boxes change.`
+    + (amount > from.balance ? ' <span class="bad">That\'s more than the box has.</span>' : '')
+    + (to.cap != null && newTo > Number(to.cap) ? ` <span class="bad">Over its ${fmt(to.cap)} limit - the extra moves on at month end.</span>` : '');
+}
+
+document.getElementById('transfer-open-btn').addEventListener('click', () => openTransferModal());
+['transfer-from', 'transfer-to', 'transfer-all'].forEach((id) => document.getElementById(id).addEventListener('change', updateTransferHint));
+document.getElementById('transfer-amount').addEventListener('input', updateTransferHint);
+document.getElementById('transfer-cancel').addEventListener('click', () => { document.getElementById('transfer-modal').hidden = true; });
+
+document.getElementById('transfer-save').addEventListener('click', async () => {
+  const from = document.getElementById('transfer-from').value;
+  const to = document.getElementById('transfer-to').value;
+  const all = document.getElementById('transfer-all').checked;
+  const amount = Number(document.getElementById('transfer-amount').value);
+  if (!from || !to) {
+    alert('Pick both boxes.');
+    return;
+  }
+  if (!all && !(amount > 0)) {
+    alert('Enter the amount.');
+    return;
+  }
+  const btn = document.getElementById('transfer-save');
+  if (btn.disabled) return;
+  btn.disabled = true;
+  try {
+    await api('/api/buckets/transfer', { method: 'POST', body: JSON.stringify(all ? { from, to, all: true } : { from, to, amount }) });
+    document.getElementById('transfer-modal').hidden = true;
+    loadSection(refreshBoxes, 'boxes');
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
 // ---------- budget boxes ----------
 
 function fmt(n) {
@@ -636,7 +701,7 @@ document.getElementById('box-pie-spent').addEventListener('click', () => setBoxP
 
 function moveReasonLabel(reason) {
   return {
-    setup: 'Starting split', income: 'Money in', salary: 'Salary', refund: 'Refund', spend: 'Spent', close: 'Month end (salary)', sweep: 'Money not in a box',
+    setup: 'Starting split', income: 'Money in', salary: 'Salary', refund: 'Refund', spend: 'Spent', close: 'Month end (salary)', sweep: 'Money not in a box', transfer: 'Moved by you',
   }[reason] || reason;
 }
 
@@ -1081,6 +1146,8 @@ async function sendChat() {
       openMoveModal('withdraw', result.amount);
     } else if (result.intent === 'cash_deposit') {
       openMoveModal('deposit', result.amount);
+    } else if (result.intent === 'box_transfer') {
+      openTransferModal(result);
     } else if (result.intent === 'card_ride') {
       openCardModal(result.purse_id, 'ride', { amount: result.amount });
     } else if (result.intent === 'add_reminder') {

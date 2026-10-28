@@ -1,7 +1,7 @@
 const express = require('express');
 const supabase = require('../services/supabase');
 const { classifyChat } = require('../services/groq');
-const { suggestBucket } = require('../services/bucketMath');
+const { suggestBucket, BUCKET_KEYS } = require('../services/bucketMath');
 const purses = require('../services/purses');
 
 const router = express.Router();
@@ -70,6 +70,18 @@ router.post('/', async (req, res) => {
     if (result.intent === 'cash_deposit') {
       // Amount can be missing - the popup asks for it.
       return res.json({ intent: 'cash_deposit', amount: result.deposit_amount || null });
+    }
+
+    if (result.intent === 'box_transfer') {
+      // Boxes the parser couldn't pin down are left empty for the popup to ask.
+      const pick = (k) => (BUCKET_KEYS.includes(k) ? k : null);
+      return res.json({
+        intent: 'box_transfer',
+        from: pick(result.transfer_from),
+        to: pick(result.transfer_to),
+        amount: result.transfer_all ? null : result.transfer_amount || null,
+        all: Boolean(result.transfer_all),
+      });
     }
 
     if (result.intent === 'card_ride') {

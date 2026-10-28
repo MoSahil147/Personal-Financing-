@@ -243,6 +243,19 @@ function computeSweep(gap, boxes) {
   return moves;
 }
 
+// A move you asked for, from one box to another. A null amount means the
+// whole balance of the `from` box.
+function computeTransfer(from, to, amount, boxes) {
+  if (!BUCKET_KEYS.includes(from)) throw new Error(`Unknown box: ${from}`);
+  if (!BUCKET_KEYS.includes(to)) throw new Error(`Unknown box: ${to}`);
+  if (from === to) throw new Error('Pick two different boxes');
+  const has = round2(Number(boxes[from].balance));
+  const n = amount == null ? has : round2(Number(amount));
+  if (!(n > 0)) throw new Error(amount == null ? 'That box is empty' : 'amount must be a positive number');
+  if (n > has) throw new Error(`That box only has ${has.toFixed(2)}`);
+  return { from, to, amount: n };
+}
+
 module.exports = {
   BUCKET_KEYS,
   PICKABLE_KEYS,
@@ -254,4 +267,5 @@ module.exports = {
   computeSetup,
   computeClose,
   computeSweep,
+  computeTransfer,
 };

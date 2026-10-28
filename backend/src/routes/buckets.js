@@ -46,6 +46,19 @@ router.get('/split-preview', async (req, res) => {
   }
 });
 
+// Move money from one box to another. `all: true` (or no amount) moves the
+// whole balance as it is right now.
+router.post('/transfer', async (req, res) => {
+  const { from, to, amount, all } = req.body || {};
+  const n = all || amount == null || amount === '' ? null : Number(amount);
+  if (n !== null && !(n > 0)) return res.status(400).json({ error: 'amount must be a positive number' });
+  try {
+    res.json(await buckets.transfer(from, to, n));
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // One-time starting allocation from current money (rent first, rest by %).
 router.get('/setup-preview', async (_req, res) => {
   try {
