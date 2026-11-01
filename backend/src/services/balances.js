@@ -1,4 +1,5 @@
 const supabase = require('./supabase');
+const { round3, money } = require('./bucketMath');
 
 async function getSettings() {
   const { data, error } = await supabase.from('settings').select('*').eq('id', 'main').single();
@@ -17,16 +18,16 @@ async function applyEntryBalanceEffect({ type, amount, payment_method, category 
   const delta = sign * Number(amount);
 
   if (type === 'expense' && category === 'Credit Card Payment' && payment_method !== 'credit') {
-    updates.bank_balance = Number(settings.bank_balance) - delta;
-    updates.credit_outstanding = Number(settings.credit_outstanding) - delta;
+    updates.bank_balance = round3(Number(settings.bank_balance) - delta);
+    updates.credit_outstanding = round3(Number(settings.credit_outstanding) - delta);
   } else if (payment_method === 'cash') {
-    updates.cash_balance = Number(settings.cash_balance) + (type === 'income' ? delta : -delta);
+    updates.cash_balance = round3(Number(settings.cash_balance) + (type === 'income' ? delta : -delta));
   } else if (type === 'income') {
-    updates.bank_balance = Number(settings.bank_balance) + delta;
+    updates.bank_balance = round3(Number(settings.bank_balance) + delta);
   } else if (payment_method === 'credit') {
-    updates.credit_outstanding = Number(settings.credit_outstanding) + delta;
+    updates.credit_outstanding = round3(Number(settings.credit_outstanding) + delta);
   } else {
-    updates.bank_balance = Number(settings.bank_balance) - delta;
+    updates.bank_balance = round3(Number(settings.bank_balance) - delta);
   }
 
   const { error } = await supabase.from('settings').update(updates).eq('id', 'main');
@@ -37,11 +38,12 @@ async function applyEntryBalanceEffect({ type, amount, payment_method, category 
 // not income or spending, so it's a pure transfer between the two balances.
 async function withdrawCash(amount) {
   const settings = await getSettings();
+  const n = round3(amount);
   const { data, error } = await supabase
     .from('settings')
     .update({
-      bank_balance: Number(settings.bank_balance) - Number(amount),
-      cash_balance: Number(settings.cash_balance) + Number(amount),
+      bank_balance: round3(Number(settings.bank_balance) - n),
+      cash_balance: round3(Number(settings.cash_balance) + n),
     })
     .eq('id', 'main')
     .select()
@@ -55,12 +57,13 @@ async function withdrawCash(amount) {
 async function depositCash(amount) {
   const settings = await getSettings();
   const cash = Number(settings.cash_balance);
-  if (Number(amount) > cash + 0.005) throw new Error(`You only have ${cash.toFixed(2)} cash on hand`);
+  const n = round3(amount);
+  if (n > cash) throw new Error(`You only have ${money(cash)} cash on hand`);
   const { data, error } = await supabase
     .from('settings')
     .update({
-      bank_balance: Number(settings.bank_balance) + Number(amount),
-      cash_balance: cash - Number(amount),
+      bank_balance: round3(Number(settings.bank_balance) + n),
+      cash_balance: round3(cash - n),
     })
     .eq('id', 'main')
     .select()

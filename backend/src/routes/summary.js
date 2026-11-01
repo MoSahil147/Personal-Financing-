@@ -2,6 +2,7 @@ const express = require('express');
 const supabase = require('../services/supabase');
 const { todayISO } = require('../services/date');
 const { reportRange, addDays } = require('../services/period');
+const { money } = require('../services/bucketMath');
 
 const router = express.Router();
 
@@ -89,7 +90,7 @@ router.get('/monthly', async (req, res) => {
       level: b.percent >= 100 ? 'over' : 'near',
       message:
         b.percent >= 100
-          ? `You've gone over your ${b.category} budget by ${(b.spent - b.limit).toFixed(2)}.`
+          ? `You've gone over your ${b.category} budget by ${money(b.spent - b.limit)}.`
           : `You're at ${b.percent}% of your ${b.category} budget.`,
     }));
 
@@ -103,7 +104,7 @@ router.get('/monthly', async (req, res) => {
         category: 'Savings goal',
         percent: savingsPercent,
         level: 'near',
-        message: `You're behind pace on your ${savingsTarget.toFixed(2)} savings goal - saved ${savings.toFixed(2)} so far.`,
+        message: `You're behind pace on your ${money(savingsTarget)} savings goal - saved ${money(savings)} so far.`,
       });
     }
   }

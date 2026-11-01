@@ -3,13 +3,15 @@ const supabase = require('../services/supabase');
 const { applyEntryBalanceEffect, getSettings } = require('../services/balances');
 const buckets = require('../services/buckets');
 const purses = require('../services/purses');
-const { PICKABLE_KEYS } = require('../services/bucketMath');
+const { PICKABLE_KEYS, round3, money } = require('../services/bucketMath');
 
 const router = express.Router();
 
 // Save a confirmed entry (after the user reviews/edits the suggestion).
 router.post('/', async (req, res) => {
-  const { entry_date, type, amount, category, classification, payment_method, note, raw_input } = req.body || {};
+  const { entry_date, type, category, classification, payment_method, note, raw_input } = req.body || {};
+  // Rounded once here, so the entry, balances and boxes all use the same number.
+  const amount = round3(req.body?.amount);
   // Paying the card bill always comes out of the bank (debit), never cash, and
   // never touches the boxes - the boxes paid when the card was used.
   const isCardPayment = type === 'expense' && category === 'Credit Card Payment';
@@ -20,8 +22,8 @@ router.post('/', async (req, res) => {
   // Topping up a prepaid card (e.g. a bus card) is spending that also adds to the card.
   const purseId = type === 'expense' && !isCardPayment ? req.body?.purse_id || null : null;
 
-  if (!entry_date || !type || !amount || !category) {
-    return res.status(400).json({ error: 'entry_date, type, amount, category are required' });
+  if (!entry_date || !type || !category || !(amount > 0)) {
+    return res.status(400).json({ error: 'entry_date, type, a positive amount and category are required' });
   }
   if (!['income', 'expense'].includes(type)) {
     return res.status(400).json({ error: 'type must be income or expense' });
@@ -37,8 +39,8 @@ router.post('/', async (req, res) => {
   if (isCardPayment) {
     try {
       const owed = Number((await getSettings()).credit_outstanding);
-      if (Number(amount) > owed + 0.005) {
-        return res.status(400).json({ error: `That's more than the ${owed.toFixed(2)} owed on the card` });
+      if (amount > owed) {
+        return res.status(400).json({ error: `That's more than the ${money(owed)} owed on the card` });
       }
     } catch (err) {
       return res.status(500).json({ error: err.message });

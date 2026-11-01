@@ -2,6 +2,7 @@ const express = require('express');
 const supabase = require('../services/supabase');
 const { getSettings, withdrawCash, depositCash } = require('../services/balances');
 const { todayISO } = require('../services/date');
+const { round3 } = require('../services/bucketMath');
 
 const router = express.Router();
 
@@ -22,7 +23,7 @@ router.put('/bank-balance', async (req, res) => {
 
   const { data, error } = await supabase
     .from('settings')
-    .update({ bank_balance: Number(bank_balance) })
+    .update({ bank_balance: round3(bank_balance) })
     .eq('id', 'main')
     .select()
     .single();
@@ -40,7 +41,7 @@ router.put('/cash-balance', async (req, res) => {
 
   const { data, error } = await supabase
     .from('settings')
-    .update({ cash_balance: Number(cash_balance) })
+    .update({ cash_balance: round3(cash_balance) })
     .eq('id', 'main')
     .select()
     .single();
@@ -59,7 +60,7 @@ router.put('/credit-card-limit', async (req, res) => {
 
   const { data, error } = await supabase
     .from('settings')
-    .update({ credit_card_limit: Number(credit_card_limit) })
+    .update({ credit_card_limit: round3(credit_card_limit) })
     .eq('id', 'main')
     .select()
     .single();
@@ -89,13 +90,13 @@ router.get('/credit-card', async (_req, res) => {
     const entries = [];
     let covered = 0;
     for (const e of data) {
-      if (covered >= owed - 0.005) break;
+      if (covered >= owed - 0.0005) break;
       entries.push(e);
-      covered += Number(e.amount);
+      covered = round3(covered + Number(e.amount));
     }
 
     const byCategory = {};
-    for (const e of entries) byCategory[e.category] = (byCategory[e.category] || 0) + Number(e.amount);
+    for (const e of entries) byCategory[e.category] = round3((byCategory[e.category] || 0) + Number(e.amount));
     res.json({
       owed,
       byCategory: Object.entries(byCategory)
@@ -144,7 +145,7 @@ router.put('/savings-target', async (req, res) => {
 
   const { data, error } = await supabase
     .from('settings')
-    .update({ monthly_savings_target: Number(monthly_savings_target) })
+    .update({ monthly_savings_target: round3(monthly_savings_target) })
     .eq('id', 'main')
     .select()
     .single();
@@ -177,7 +178,7 @@ router.post('/settle-credit-card', async (req, res) => {
     const { data, error: updateErr } = await supabase
       .from('settings')
       .update({
-        bank_balance: Number(settings.bank_balance) - amount,
+        bank_balance: round3(Number(settings.bank_balance) - amount),
         credit_outstanding: 0,
       })
       .eq('id', 'main')

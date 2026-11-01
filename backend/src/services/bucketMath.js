@@ -10,7 +10,7 @@
 // is simply its percentage share of the incoming amount.
 function rentTarget(boxes, amount) {
   const target = boxes.rent.target;
-  return target != null && target > 0 ? Number(target) : round2((amount * boxes.rent.percent) / 100);
+  return target != null && target > 0 ? Number(target) : round3((amount * boxes.rent.percent) / 100);
 }
 
 const BUCKET_KEYS = [
@@ -38,8 +38,15 @@ const CATEGORY_BUCKETS = {
   Investment: 'investing',
 };
 
-function round2(n) {
-  return Math.round(n * 100) / 100;
+// All money is kept to 3 decimal places. toPrecision first, so binary float
+// noise can't tip a value the wrong way (1.0005 * 1000 is 1000.4999999999999).
+function round3(n) {
+  return Math.round(Number((Number(n) * 1000).toPrecision(15))) / 1000;
+}
+
+// An amount for messages: 12.50, 12.345.
+function money(n) {
+  return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 3 });
 }
 
 function total(shares) {
@@ -82,14 +89,14 @@ function fitToCaps(shares, boxes) {
   };
   for (const [start, amount] of Object.entries(shares)) {
     let key = start;
-    let left = round2(amount);
+    let left = round3(amount);
     while (left > 0) {
-      const x = round2(Math.min(left, room(key)));
-      if (x > 0) result[key] = round2((result[key] || 0) + x);
-      left = round2(left - x);
+      const x = round3(Math.min(left, room(key)));
+      if (x > 0) result[key] = round3((result[key] || 0) + x);
+      left = round3(left - x);
       key = OVERFLOW_TO[key] || 'investing';
     }
-    if (left < 0) result.investing = round2((result.investing || 0) + left);
+    if (left < 0) result.investing = round3((result.investing || 0) + left);
   }
   return result;
 }
@@ -100,9 +107,9 @@ function fitToCaps(shares, boxes) {
 function computeSplit(amount, boxes) {
   const shares = {};
   for (const [key, box] of Object.entries(boxes)) {
-    if (box.percent > 0) shares[key] = round2((amount * box.percent) / 100);
+    if (box.percent > 0) shares[key] = round3((amount * box.percent) / 100);
   }
-  shares.investing = round2((shares.investing || 0) + amount - total(shares));
+  shares.investing = round3((shares.investing || 0) + amount - total(shares));
   return fitToCaps(shares, boxes);
 }
 
@@ -115,25 +122,25 @@ function computeSplit(amount, boxes) {
 function computeSalarySplit(amount, boxes) {
   const shares = {};
   const add = (key, v) => {
-    const x = round2(v);
-    if (x !== 0) shares[key] = round2((shares[key] || 0) + x);
+    const x = round3(v);
+    if (x !== 0) shares[key] = round3((shares[key] || 0) + x);
   };
 
   // Never more than one month's rent: if this month's rent was already paid
   // before the salary (box below zero), the salary covers that and stops there.
   const rent = rentTarget(boxes, amount);
-  const topUp = round2(Math.min(amount, rent, Math.max(0, rent - boxes.rent.balance)));
+  const topUp = round3(Math.min(amount, rent, Math.max(0, rent - boxes.rent.balance)));
   add('rent', topUp);
 
   const others = Object.entries(boxes).filter(([key, box]) => key !== 'rent' && box.percent > 0);
   const wanted = others.reduce((s, [, box]) => s + (amount * box.percent) / 100, 0);
-  const rest = round2(amount - topUp);
+  const rest = round3(amount - topUp);
   const scale = wanted > rest ? rest / wanted : 1;
   for (const [key, box] of others) add(key, ((amount * box.percent) / 100) * scale);
 
   // Whatever rent didn't need starts at the buffer; fitToCaps then walks it
   // (and any box that would go over its limit) down the chain.
-  const surplus = round2(amount - total(shares));
+  const surplus = round3(amount - total(shares));
   if (scale < 1 || surplus <= 0) add('investing', surplus); // just rounding pennies
   else add('buffer', surplus);
   return fitToCaps(shares, boxes);
@@ -144,14 +151,14 @@ function computeSalarySplit(amount, boxes) {
 // percentages scaled up to 100%.
 function computeSetup(amount, boxes) {
   if (!(amount > 0)) return {};
-  const shares = { rent: round2(Math.min(amount, rentTarget(boxes, amount))) };
-  const rest = round2(amount - shares.rent);
+  const shares = { rent: round3(Math.min(amount, rentTarget(boxes, amount))) };
+  const rest = round3(amount - shares.rent);
   const others = Object.entries(boxes).filter(([key, box]) => key !== 'rent' && box.percent > 0);
   const weight = others.reduce((s, [, box]) => s + box.percent, 0);
   if (rest <= 0 || weight <= 0) return shares;
 
-  for (const [key, box] of others) shares[key] = round2((rest * box.percent) / weight);
-  shares.investing = round2((shares.investing || 0) + amount - total(shares));
+  for (const [key, box] of others) shares[key] = round3((rest * box.percent) / weight);
+  shares.investing = round3((shares.investing || 0) + amount - total(shares));
   return fitToCaps(shares, boxes);
 }
 
@@ -163,22 +170,22 @@ function computeClose(boxes) {
   const moves = [];
 
   const move = (from, to, amount) => {
-    const amt = round2(amount);
+    const amt = round3(amount);
     if (amt <= 0) return;
-    bal[from] = round2(bal[from] - amt);
-    bal[to] = round2(bal[to] + amt);
+    bal[from] = round3(bal[from] - amt);
+    bal[to] = round3(bal[to] + amt);
     moves.push({ from, to, amount: amt });
   };
 
   // Fills each box in `chain` up to its cap; the last one takes whatever's left.
   const pour = (from, amount, chain) => {
-    let left = round2(amount);
+    let left = round3(amount);
     chain.forEach((key, i) => {
       if (left <= 0) return;
       const room = i === chain.length - 1 ? left : Math.max(0, cap(key) - bal[key]);
       const x = Math.min(left, room);
       move(from, key, x);
-      left = round2(left - x);
+      left = round3(left - x);
     });
   };
 
@@ -220,24 +227,24 @@ function computeClose(boxes) {
 // than you actually have, the difference comes out of Emergency, then
 // Investing, so the boxes always add up to your real money.
 function computeSweep(gap, boxes) {
-  const amount = round2(gap);
-  if (Math.abs(amount) < 0.01) return [];
+  const amount = round3(gap);
+  if (Math.abs(amount) < 0.001) return [];
   const bal = (key) => Number(boxes[key].balance);
   const cap = (key) => (boxes[key].cap == null ? Infinity : Number(boxes[key].cap));
   const moves = [];
   if (amount > 0) {
-    const toEmergency = round2(Math.min(amount, Math.max(0, cap('emergency') - bal('emergency'))));
+    const toEmergency = round3(Math.min(amount, Math.max(0, cap('emergency') - bal('emergency'))));
     if (toEmergency > 0) moves.push({ to: 'emergency', amount: toEmergency });
-    const rest = round2(amount - toEmergency);
+    const rest = round3(amount - toEmergency);
     if (rest > 0) moves.push({ to: 'investing', amount: rest });
     return moves;
   }
   let missing = -amount;
-  const fromEmergency = round2(Math.min(missing, Math.max(0, bal('emergency'))));
-  missing = round2(missing - fromEmergency);
-  const fromInvesting = round2(Math.min(missing, Math.max(0, bal('investing'))));
-  missing = round2(missing - fromInvesting);
-  const emergencyTotal = round2(fromEmergency + missing);
+  const fromEmergency = round3(Math.min(missing, Math.max(0, bal('emergency'))));
+  missing = round3(missing - fromEmergency);
+  const fromInvesting = round3(Math.min(missing, Math.max(0, bal('investing'))));
+  missing = round3(missing - fromInvesting);
+  const emergencyTotal = round3(fromEmergency + missing);
   if (emergencyTotal > 0) moves.push({ from: 'emergency', amount: emergencyTotal });
   if (fromInvesting > 0) moves.push({ from: 'investing', amount: fromInvesting });
   return moves;
@@ -249,17 +256,18 @@ function computeTransfer(from, to, amount, boxes) {
   if (!BUCKET_KEYS.includes(from)) throw new Error(`Unknown box: ${from}`);
   if (!BUCKET_KEYS.includes(to)) throw new Error(`Unknown box: ${to}`);
   if (from === to) throw new Error('Pick two different boxes');
-  const has = round2(Number(boxes[from].balance));
-  const n = amount == null ? has : round2(Number(amount));
+  const has = round3(Number(boxes[from].balance));
+  const n = amount == null ? has : round3(Number(amount));
   if (!(n > 0)) throw new Error(amount == null ? 'That box is empty' : 'amount must be a positive number');
-  if (n > has) throw new Error(`That box only has ${has.toFixed(2)}`);
+  if (n > has) throw new Error(`That box only has ${money(has)}`);
   return { from, to, amount: n };
 }
 
 module.exports = {
   BUCKET_KEYS,
   PICKABLE_KEYS,
-  round2,
+  round3,
+  money,
   defaultBucketFor,
   suggestBucket,
   computeSplit,

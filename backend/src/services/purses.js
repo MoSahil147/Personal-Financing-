@@ -1,6 +1,6 @@
 const supabase = require('./supabase');
 const { todayISO } = require('./date');
-const { round2 } = require('./bucketMath');
+const { round3 } = require('./bucketMath');
 
 // Prepaid card purses (bus cards). A top-up is a saved expense that also adds
 // to the card; a ride just takes money off the card - it was already counted
@@ -20,10 +20,10 @@ async function getPurse(id) {
 
 // Changes a card's balance by `amount` (+ or -) and records why.
 async function addMove(purseId, amount, { reason, note = null, entry_id = null, date = todayISO() }) {
-  const amt = round2(Number(amount));
+  const amt = round3(Number(amount));
   if (!amt) return null;
   const purse = await getPurse(purseId);
-  const balance = round2(purse.balance + amt);
+  const balance = round3(purse.balance + amt);
   const { error } = await supabase.from('purses').update({ balance }).eq('id', purseId);
   if (error) throw new Error(error.message);
   const { error: moveErr } = await supabase.from('purse_moves').insert({
@@ -53,7 +53,7 @@ async function reverseMoves(moves) {
   for (const m of moves) {
     const purse = await getPurse(m.purse_id);
     const { error } = await supabase.from('purses')
-      .update({ balance: round2(purse.balance - Number(m.amount)) })
+      .update({ balance: round3(purse.balance - Number(m.amount)) })
       .eq('id', m.purse_id);
     if (error) throw new Error(error.message);
   }
@@ -66,7 +66,7 @@ function ride(purseId, amount, { note, date } = {}) {
 // Sets the card to what the card reader / app actually shows.
 async function setBalance(purseId, balance) {
   const purse = await getPurse(purseId);
-  const updated = await addMove(purseId, round2(Number(balance) - purse.balance), { reason: 'adjust', note: 'Balance corrected' });
+  const updated = await addMove(purseId, round3(Number(balance) - purse.balance), { reason: 'adjust', note: 'Balance corrected' });
   return updated || purse;
 }
 

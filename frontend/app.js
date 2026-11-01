@@ -229,6 +229,28 @@ async function login() {
   }
 }
 
+// ---------- phone keyboard ----------
+
+// On phones the keyboard covers the page without shrinking it, so anything
+// sized to the screen ends up behind it. Popups and the chat bar size
+// themselves from these values to stay in the part you can actually see.
+function syncVisibleArea() {
+  const view = window.visualViewport;
+  if (!view) return;
+  const root = document.documentElement;
+  const keyboard = Math.max(0, window.innerHeight - view.height - view.offsetTop);
+  root.style.setProperty('--visible-top', `${view.offsetTop}px`);
+  root.style.setProperty('--visible-height', `${view.height}px`);
+  root.style.setProperty('--keyboard', `${keyboard}px`);
+  document.body.classList.toggle('keyboard-open', keyboard > 80);
+}
+
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', syncVisibleArea);
+  window.visualViewport.addEventListener('scroll', syncVisibleArea);
+  syncVisibleArea();
+}
+
 // ---------- period selectors ----------
 
 function populateSelectors() {
@@ -362,14 +384,14 @@ async function refreshBalances() {
   const cash = Number(settings.cash_balance);
   state.bank = bank;
   state.cash = cash;
-  document.getElementById('bank-balance').textContent = `${bank.toFixed(2)} AED`;
-  document.getElementById('cash-balance').textContent = `${cash.toFixed(2)} AED`;
+  document.getElementById('bank-balance').textContent = `${fmt(bank)} AED`;
+  document.getElementById('cash-balance').textContent = `${fmt(cash)} AED`;
   const owed = Number(settings.credit_outstanding);
   const limit = Number(settings.credit_card_limit) || 0;
-  document.getElementById('credit-outstanding').textContent = `${owed.toFixed(2)} AED`;
+  document.getElementById('credit-outstanding').textContent = `${fmt(owed)} AED`;
   document.getElementById('settle-credit-btn').hidden = owed <= 0;
   document.getElementById('credit-box').classList.toggle('over-limit', limit > 0 && owed >= limit);
-  document.getElementById('total-capital').textContent = `${(bank + cash).toFixed(2)} AED`;
+  document.getElementById('total-capital').textContent = `${fmt(bank + cash)} AED`;
 }
 
 document.getElementById('settle-credit-btn').addEventListener('click', async () => {
@@ -504,7 +526,7 @@ document.getElementById('transfer-save').addEventListener('click', async () => {
 // ---------- budget boxes ----------
 
 function fmt(n) {
-  return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 3 });
 }
 
 // Boxes get fixed colors by their position, so each box keeps the same color
@@ -946,18 +968,18 @@ async function refreshCreditCard() {
 async function refreshMonthly() {
   const summary = await api(`/api/summary/monthly?year=${state.year}&month=${state.month}`);
 
-  document.getElementById('stat-income').textContent = summary.income.toFixed(2);
+  document.getElementById('stat-income').textContent = fmt(summary.income);
   const expenseEl = document.getElementById('stat-expense');
-  expenseEl.textContent = summary.expense.toFixed(2);
+  expenseEl.textContent = fmt(summary.expense);
   const savingsEl = document.getElementById('stat-savings');
-  savingsEl.textContent = summary.savings.toFixed(2);
+  savingsEl.textContent = fmt(summary.savings);
   savingsEl.className = 'value ' + (summary.savings >= 0 ? 'good' : 'bad');
 
-  document.getElementById('eb-total').textContent = summary.expense.toFixed(2);
-  document.getElementById('eb-credit').textContent = summary.expenseByMethod.credit.toFixed(2);
-  document.getElementById('eb-debit').textContent = `-${summary.expenseByMethod.debit.toFixed(2)}`;
+  document.getElementById('eb-total').textContent = fmt(summary.expense);
+  document.getElementById('eb-credit').textContent = fmt(summary.expenseByMethod.credit);
+  document.getElementById('eb-debit').textContent = `-${fmt(summary.expenseByMethod.debit)}`;
 
-  document.getElementById('invested-month').textContent = summary.investedThisMonth.toFixed(2);
+  document.getElementById('invested-month').textContent = fmt(summary.investedThisMonth);
 
   const alertsEl = document.getElementById('alerts');
   alertsEl.innerHTML = '';
@@ -989,7 +1011,7 @@ function renderBudgets(budgetStatus) {
     item.innerHTML = `
       <div class="budget-item-labels">
         <span class="category">${escapeHtml(b.category)}</span>
-        <span>${b.spent.toFixed(2)} / ${b.limit.toFixed(2)}</span>
+        <span>${fmt(b.spent)} / ${fmt(b.limit)}</span>
       </div>
       <div class="budget-item-bar"><div class="${close ? 'close' : ''}" style="width:${clamped}%"></div></div>`;
     list.appendChild(item);
@@ -1003,7 +1025,7 @@ function renderSavingsGoal(target, savings, percent) {
     return;
   }
   row.hidden = false;
-  document.getElementById('savings-goal-amount').textContent = `${target.toFixed(2)}`;
+  document.getElementById('savings-goal-amount').textContent = `${fmt(target)}`;
   document.getElementById('savings-goal-percent').textContent = `${percent}%`;
   const fill = document.getElementById('savings-goal-fill');
   const clamped = Math.max(0, Math.min(100, percent));
@@ -1053,7 +1075,7 @@ function renderCategoryBarChart(canvasId, previous, byCategory) {
       maintainAspectRatio: false,
       plugins: {
         legend: { display: false },
-        tooltip: { callbacks: { label: (item) => `${Number(item.raw).toFixed(2)} AED` } },
+        tooltip: { callbacks: { label: (item) => `${fmt(item.raw)} AED` } },
       },
       scales: {
         x: { ticks: { color: '#9aa0ac', autoSkip: false, maxRotation: 60, font: { size: 11 } } },
@@ -1066,17 +1088,17 @@ function renderCategoryBarChart(canvasId, previous, byCategory) {
 async function refreshYearly() {
   const summary = await api(`/api/summary/yearly?year=${state.year}`);
 
-  document.getElementById('year-stat-income').textContent = summary.income.toFixed(2);
-  document.getElementById('year-stat-expense').textContent = summary.expense.toFixed(2);
+  document.getElementById('year-stat-income').textContent = fmt(summary.income);
+  document.getElementById('year-stat-expense').textContent = fmt(summary.expense);
   const yearSavingsEl = document.getElementById('year-stat-savings');
-  yearSavingsEl.textContent = summary.savings.toFixed(2);
+  yearSavingsEl.textContent = fmt(summary.savings);
   yearSavingsEl.className = 'value ' + (summary.savings >= 0 ? 'good' : 'bad');
 
-  document.getElementById('year-eb-total').textContent = summary.expense.toFixed(2);
-  document.getElementById('year-eb-credit').textContent = summary.expenseByMethod.credit.toFixed(2);
-  document.getElementById('year-eb-debit').textContent = `-${summary.expenseByMethod.debit.toFixed(2)}`;
+  document.getElementById('year-eb-total').textContent = fmt(summary.expense);
+  document.getElementById('year-eb-credit').textContent = fmt(summary.expenseByMethod.credit);
+  document.getElementById('year-eb-debit').textContent = `-${fmt(summary.expenseByMethod.debit)}`;
 
-  document.getElementById('invested-year-tab').textContent = summary.investedThisYear.toFixed(2);
+  document.getElementById('invested-year-tab').textContent = fmt(summary.investedThisYear);
 
   state.yearlyPieChart = renderPieChart('yearly-pie-chart', state.yearlyPieChart, summary.byCategory);
   state.yearlyCategoryBarChart = renderCategoryBarChart('yearly-category-bar-chart', state.yearlyCategoryBarChart, summary.byCategory);
@@ -1105,7 +1127,7 @@ async function refreshLedger() {
         <span class="ledger-meta">${e.entry_date}${e.classification ? ' · ' + e.classification : ''}${e.payment_method ? ' · ' + e.payment_method : ''}${e.purse_id ? ' · bus card top-up' : ''}</span>
       </span>
       <span>
-        <span class="ledger-amount ${e.type}">${e.type === 'income' ? '+' : '-'}${Number(e.amount).toFixed(2)}</span>
+        <span class="ledger-amount ${e.type}">${e.type === 'income' ? '+' : '-'}${fmt(e.amount)}</span>
         <button class="ledger-del" data-id="${e.id}">✕</button>
       </span>`;
     list.appendChild(li);
@@ -1455,7 +1477,7 @@ const XL = {
   navy: 'FF1F3A5F', white: 'FFFFFFFF', zebra: 'FFF4F6FA', band: 'FFE8EEF7',
   green: 'FF1E7B45', red: 'FFB3261E', muted: 'FF6B7280', line: 'FFD9DEE7',
 };
-const XL_MONEY = '#,##0.00;[Red]-#,##0.00';
+const XL_MONEY = '#,##0.00#;[Red]-#,##0.00#';
 const XL_PCT = '0.0%';
 const XL_DATE = 'ddd dd mmm yyyy';
 

@@ -12,17 +12,34 @@
 
 * { box-sizing: border-box; }
 
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+
 input, select, button { font-size: 16px; }
+
+/* Taps respond straight away instead of waiting to see if it's a double tap. */
+button, select, input, summary, .box-card, .purse-tile, #buffer-strip { touch-action: manipulation; }
+button { transition: background-color 0.15s, border-color 0.15s, opacity 0.15s, transform 0.1s; }
+button:active:not(:disabled) { transform: scale(0.98); }
+button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
 
 body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  overflow-x: clip;
 }
+
+/* The page behind an open popup stays still. */
+body:has(.modal:not([hidden]), #confirm-modal:not([hidden])) { overflow: hidden; }
 
 #login-screen {
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -273,7 +290,10 @@ canvas { max-width: 100%; }
   display: flex;
   gap: 8px;
   z-index: 5;
+  /* Sits just above the phone keyboard while it's open. */
+  transform: translateY(calc(var(--keyboard, 0px) * -1));
 }
+.keyboard-open #chat-bar { bottom: 0; }
 #chat-input {
   flex: 1;
   min-width: 0;
@@ -295,26 +315,37 @@ canvas { max-width: 100%; }
   font-size: 15px;
 }
 
+/* Sized to the visible area, not the screen, so the keyboard can't cover it. */
 #confirm-modal, .modal {
   position: fixed;
-  inset: 0;
+  top: var(--visible-top, 0);
+  left: 0;
+  right: 0;
+  height: var(--visible-height, 100dvh);
   background: rgba(0,0,0,0.6);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 16px;
   z-index: 10;
+  overscroll-behavior: contain;
+  animation: modal-fade 0.16s ease-out;
 }
 #confirm-box, .modal-box {
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 20px;
+  padding: 0 20px 20px;
   width: 100%;
-  max-width: 360px;
-  max-height: calc(100vh - 32px);
+  max-width: 420px;
+  max-height: 100%;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  animation: modal-rise 0.2s ease-out;
 }
+@keyframes modal-fade { from { opacity: 0; } }
+@keyframes modal-rise { from { transform: translateY(12px); } }
 #confirm-box h3, .modal-box h3 { margin: 0; font-size: 15px; }
 #confirm-box label, .modal-box label { display: block; font-size: 12px; color: var(--muted); margin-top: 10px; margin-bottom: 4px; }
 #confirm-box input, #confirm-box select, .modal-box input, .modal-box select {
@@ -324,23 +355,27 @@ canvas { max-width: 100%; }
   border: 1px solid var(--border);
   background: #0d0f14;
   color: var(--text);
+  min-width: 0;
+  min-height: 44px;
+  scroll-margin-top: 84px; /* a focused field never lands under the pinned header */
 }
-#confirm-actions, .modal-actions { display: flex; gap: 8px; margin-top: 10px; }
+#confirm-box input[type="date"], .modal-box input[type="date"] { display: block; }
+#confirm-actions, .modal-actions { display: flex; gap: 8px; flex: none; }
 #confirm-actions button, .modal-actions button {
-  flex: 1;
-  padding: 10px;
+  min-height: 44px;
+  padding: 10px 16px;
   border-radius: 8px;
   border: none;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 15px;
 }
 #confirm-save, .btn-primary { background: var(--accent); color: white; }
 #confirm-cancel, .btn-secondary { background: #0d0f14; color: var(--text); border: 1px solid var(--border) !important; }
 
 #confirm-box .confirm-check { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: var(--text); margin-top: 8px; cursor: pointer; }
-#confirm-box .confirm-check input { width: auto; margin: 2px 0 0; padding: 0; flex: none; }
+#confirm-box .confirm-check input { width: auto; min-height: 0; margin: 2px 0 0; padding: 0; flex: none; }
 #transfer-modal .confirm-check { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: var(--text); margin-top: 8px; cursor: pointer; }
-#transfer-modal .confirm-check input { width: auto; margin: 2px 0 0; padding: 0; flex: none; }
+#transfer-modal .confirm-check input { width: auto; min-height: 0; margin: 2px 0 0; padding: 0; flex: none; }
 .confirm-hint { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
 .confirm-hint strong { color: var(--text); }
 .confirm-hint .bad { color: var(--danger); }
@@ -460,22 +495,73 @@ canvas { max-width: 100%; }
   .purse-tile { padding: 10px; }
   .purse-balance { font-size: 18px; }
   .purse-actions { flex-direction: column; }
-  .modal, #confirm-modal { align-items: flex-end; padding: 0; }
-  .modal-box, #confirm-box { max-width: none; border-radius: 14px 14px 0 0; padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px)); max-height: 90vh; }
+  /* Popups become a sheet resting on the keyboard (or the bottom of the screen). */
+  .modal, #confirm-modal { align-items: flex-end; padding: env(safe-area-inset-top, 0px) 0 0; }
+  .modal-box, #confirm-box { max-width: none; border-width: 1px 0 0; border-radius: 14px 14px 0 0; padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
+  .keyboard-open .modal-box, .keyboard-open #confirm-box { padding-bottom: 20px; }
+  @keyframes modal-rise { from { transform: translateY(32px); } }
+
+  .move-money-btns button, .balance-box.credit button { min-height: 40px; font-size: 13px; }
+  .tab-buttons button { min-height: 40px; }
+  #reminder-form input { min-width: 0; min-height: 44px; }
+  #reminder-form button { min-height: 44px; }
+  .ledger-del { padding: 10px; margin: -6px -6px -6px 2px; }
+  .export-btn { min-height: 40px; }
+  .boxes-head { flex-wrap: wrap; }
 }
 
 /* Title + Cancel/Save stay pinned at the top while the form scrolls. */
 .modal-head {
   position: sticky;
-  top: -20px;
+  top: 0;
   z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   background: var(--panel);
-  margin: -20px -20px 4px;
-  padding: 16px 20px 12px;
+  margin: 0 -20px 4px;
+  padding: 12px 20px;
   border-bottom: 1px solid var(--border);
 }
+.modal-head h3 { min-width: 0; }
 
 /* Cash <-> bank buttons under Cash on Hand */
 .move-money-btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .move-money-btns button { flex: 1; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel); color: var(--text); cursor: pointer; font-size: 12px; white-space: nowrap; min-width: 0; }
 .move-money-btns button:first-child { background: var(--accent); border-color: var(--accent); color: white; }
+
+/* ---------- laptop: use the width ---------- */
+@media (min-width: 1024px) {
+  #app {
+    max-width: 1180px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    padding: 24px;
+    padding-bottom: 120px;
+  }
+  #app .card { margin-bottom: 0; }
+  #connection-banner { grid-column: 1 / -1; margin-bottom: 0; }
+  #balances-card, #boxes-card { grid-column: 1 / -1; }
+  #balances-card { order: 1; }
+  #boxes-card { order: 2; }
+  #stats-card { order: 3; }
+  #ledger-card { order: 4; display: flex; flex-direction: column; }
+  #ledger-list { flex: 1; max-height: 1000px; }
+  #reminders-card { order: 5; }
+  #cc-card { order: 6; }
+  #purses-card { order: 7; }
+  #alerts { order: 8; }
+  #boxes-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  #chat-bar { padding-inline: max(24px, calc((100% - 1132px) / 2)); }
+  .box-card:hover, .purse-tile:hover, #buffer-strip:hover { border-color: var(--muted); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #confirm-modal, .modal, #confirm-box, .modal-box { animation: none; }
+  button { transition: none; }
+  button:active:not(:disabled) { transform: none; }
+}
+
+#transfer-open-btn { min-height: 36px; padding: 6px 12px; border-radius: 8px; font-size: 13px; cursor: pointer; }

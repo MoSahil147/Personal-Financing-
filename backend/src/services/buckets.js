@@ -22,7 +22,7 @@ function toMap(rows) {
 // What the user actually has right now - the boxes should add up to this.
 async function realMoney() {
   const s = await getSettings();
-  return math.round2(Number(s.bank_balance) + Number(s.cash_balance) - Number(s.credit_outstanding));
+  return math.round3(Number(s.bank_balance) + Number(s.cash_balance) - Number(s.credit_outstanding));
 }
 
 // Adds/removes each move's amount on the affected boxes. A move is
@@ -35,8 +35,8 @@ async function adjustBalances(moves) {
     for (const key of [m.from, m.to]) {
       if (key && !map[key]) throw new Error(`Unknown box: ${key}`);
     }
-    if (m.from) { map[m.from].balance = math.round2(map[m.from].balance - m.amount); touched.add(m.from); }
-    if (m.to) { map[m.to].balance = math.round2(map[m.to].balance + m.amount); touched.add(m.to); }
+    if (m.from) { map[m.from].balance = math.round3(map[m.from].balance - m.amount); touched.add(m.from); }
+    if (m.to) { map[m.to].balance = math.round3(map[m.to].balance + m.amount); touched.add(m.to); }
   }
   for (const key of touched) {
     const { error } = await supabase.from('buckets').update({ balance: map[key].balance }).eq('key', key);
@@ -180,7 +180,7 @@ async function spentThisMonth() {
   const spent = {};
   for (const m of data) {
     if (m.reason === 'close' && m.from_bucket !== 'buffer') continue;
-    spent[m.from_bucket] = math.round2((spent[m.from_bucket] || 0) + Number(m.amount));
+    spent[m.from_bucket] = math.round3((spent[m.from_bucket] || 0) + Number(m.amount));
   }
   return spent;
 }
@@ -219,12 +219,12 @@ async function transfer(from, to, amount) {
 
 async function overview() {
   const [buckets, real, spent, used] = await Promise.all([loadBuckets(), realMoney(), spentThisMonth(), hasAnyMoves()]);
-  const total = math.round2(buckets.reduce((s, b) => s + b.balance, 0));
+  const total = math.round3(buckets.reduce((s, b) => s + b.balance, 0));
   return {
     buckets,
     total,
     realMoney: real,
-    unallocated: math.round2(real - total),
+    unallocated: math.round3(real - total),
     spentThisMonth: spent,
     needsSetup: !used,
   };

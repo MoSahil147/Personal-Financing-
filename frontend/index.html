@@ -45,7 +45,7 @@
       </div>
     </div>
 
-    <div class="card">
+    <div class="card" id="reminders-card">
       <h2>Reminders</h2>
       <ul id="reminders-list"></ul>
       <form id="reminder-form">
@@ -113,7 +113,7 @@
 
     <div id="alerts" class="card"></div>
 
-    <div class="card">
+    <div class="card" id="stats-card">
       <div class="period-controls">
         <select id="month-select"></select>
         <select id="year-select"></select>
@@ -174,7 +174,7 @@
       </div>
     </div>
 
-    <div class="card">
+    <div class="card" id="ledger-card">
       <div class="boxes-head ledger-head">
         <h2>Ledger <span id="ledger-period" class="ledger-period"></span></h2>
         <button id="export-btn" class="export-btn" type="button">⬇ Excel</button>
@@ -203,7 +203,7 @@
         <option value="income">Income</option>
       </select>
       <label>Amount</label>
-      <input type="number" id="confirm-amount" step="0.01" />
+      <input type="number" id="confirm-amount" step="0.001" min="0" inputmode="decimal" />
       <label>Category</label>
       <select id="confirm-category"></select>
       <label>Classification</label>
@@ -252,7 +252,7 @@
         <option value="set">Fix the balance to what the card shows</option>
       </select>
       <label id="card-modal-amount-label">Fare</label>
-      <input type="number" id="card-modal-amount" step="0.01" min="0" inputmode="decimal" />
+      <input type="number" id="card-modal-amount" step="0.001" min="0" inputmode="decimal" />
       <div id="card-modal-note-row">
         <label>Note</label>
         <input type="text" id="card-modal-note" placeholder="e.g. office" />
@@ -276,7 +276,7 @@
         <option value="withdraw">Withdrew cash from the bank</option>
       </select>
       <label>Amount</label>
-      <input type="number" id="move-amount" step="0.01" min="0" inputmode="decimal" />
+      <input type="number" id="move-amount" step="0.001" min="0" inputmode="decimal" />
       <div id="move-hint" class="confirm-hint"></div>
     </div>
   </div>
@@ -295,7 +295,7 @@
       <label>To</label>
       <select id="transfer-to"></select>
       <label>Amount</label>
-      <input type="number" id="transfer-amount" step="0.01" min="0" inputmode="decimal" />
+      <input type="number" id="transfer-amount" step="0.001" min="0" inputmode="decimal" />
       <label class="confirm-check">
         <input type="checkbox" id="transfer-all" />
         <span>Move everything in the box</span>
