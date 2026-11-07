@@ -543,13 +543,13 @@ canvas { max-width: 100%; }
   }
   #app .card { margin-bottom: 0; }
   #connection-banner { grid-column: 1 / -1; margin-bottom: 0; }
-  #balances-card, #boxes-card { grid-column: 1 / -1; }
+  #balances-card, #reminders-card, #boxes-card { grid-column: 1 / -1; }
   #balances-card { order: 1; }
-  #boxes-card { order: 2; }
-  #stats-card { order: 3; }
+  #reminders-card { order: 2; }
+  #boxes-card { order: 3; }
+  #stats-card { order: 4; }
   #ledger-card { order: 4; display: flex; flex-direction: column; }
   #ledger-list { flex: 1; max-height: 1000px; }
-  #reminders-card { order: 5; }
   #cc-card { order: 6; }
   #purses-card { order: 7; }
   #alerts { order: 8; }
