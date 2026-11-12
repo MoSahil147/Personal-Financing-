@@ -22,11 +22,11 @@
     <div class="card" id="balances-card">
       <div class="balance-row">
         <div class="balance-box">
-          <div class="label" id="account-balance-label-1">Account 1 Balance</div>
+          <div class="label" id="account-balance-label-1">Balance</div>
           <div class="value" id="account-balance-1">-</div>
         </div>
         <div class="balance-box">
-          <div class="label" id="account-balance-label-2">Account 2 Balance</div>
+          <div class="label" id="account-balance-label-2">Balance</div>
           <div class="value" id="account-balance-2">-</div>
         </div>
         <div class="balance-box">
@@ -65,7 +65,7 @@
         <button type="button" id="transfer-open-btn" class="btn-secondary">Move between boxes</button>
       </div>
       <section class="account-box-panel" data-account-slot="1">
-        <h3 id="account-box-title-1">Account 1 My Boxes</h3>
+        <h3 id="account-box-title-1">My Boxes</h3>
         <div class="boxes-totals">
           <span>In boxes <strong id="boxes-total-1">-</strong></span>
           <span>Real money <strong id="boxes-real-1">-</strong></span>
@@ -87,12 +87,12 @@
         <div class="chart-box"><canvas id="box-pie-chart-1"></canvas></div>
         <div id="box-pie-empty-1" class="box-pie-empty" hidden>Nothing to show yet.</div>
         <details id="box-history-1">
-          <summary id="box-history-summary-1">Account 1 box history</summary>
+          <summary id="box-history-summary-1">Box history</summary>
           <ul id="box-history-list-1"></ul>
         </details>
       </section>
       <section class="account-box-panel" data-account-slot="2">
-        <h3 id="account-box-title-2">Account 2 My Boxes</h3>
+        <h3 id="account-box-title-2">My Boxes</h3>
         <div class="boxes-totals">
           <span>In boxes <strong id="boxes-total-2">-</strong></span>
           <span>Real money <strong id="boxes-real-2">-</strong></span>
@@ -114,7 +114,7 @@
         <div class="chart-box"><canvas id="box-pie-chart-2"></canvas></div>
         <div id="box-pie-empty-2" class="box-pie-empty" hidden>Nothing to show yet.</div>
         <details id="box-history-2">
-          <summary id="box-history-summary-2">Account 2 box history</summary>
+          <summary id="box-history-summary-2">Box history</summary>
           <ul id="box-history-list-2"></ul>
         </details>
       </section>
@@ -169,8 +169,8 @@
           <div class="eb-row eb-debit"><span>Debit Card</span><span id="eb-debit">-</span></div>
         </div>
         <div class="expense-breakdown">
-          <div class="eb-row"><span id="month-spent-label-1">Spent from Account 1</span><span id="month-spent-1">-</span></div>
-          <div class="eb-row"><span id="month-spent-label-2">Spent from Account 2</span><span id="month-spent-2">-</span></div>
+          <div class="eb-row"><span id="month-spent-label-1">Spent</span><span id="month-spent-1">-</span></div>
+          <div class="eb-row"><span id="month-spent-label-2">Spent</span><span id="month-spent-2">-</span></div>
         </div>
         <h3>Expenses by bank account</h3>
         <div class="chart-box"><canvas id="month-account-chart"></canvas></div>
@@ -204,8 +204,8 @@
           <div class="eb-row eb-debit"><span>Debit Card</span><span id="year-eb-debit">-</span></div>
         </div>
         <div class="expense-breakdown">
-          <div class="eb-row"><span id="year-spent-label-1">Spent from Account 1</span><span id="year-spent-1">-</span></div>
-          <div class="eb-row"><span id="year-spent-label-2">Spent from Account 2</span><span id="year-spent-2">-</span></div>
+          <div class="eb-row"><span id="year-spent-label-1">Spent</span><span id="year-spent-1">-</span></div>
+          <div class="eb-row"><span id="year-spent-label-2">Spent</span><span id="year-spent-2">-</span></div>
         </div>
         <h3>Expenses by bank account</h3>
         <div class="chart-box"><canvas id="year-account-chart"></canvas></div>

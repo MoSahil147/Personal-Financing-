@@ -391,7 +391,7 @@ async function refreshBalances() {
   for (const slot of [1, 2]) {
     const account = accountAtSlot(slot);
     if (!account) continue;
-    const name = account.name || `Account ${slot}`;
+    const name = account.name || 'Bank account';
     document.getElementById(`account-balance-label-${slot}`).textContent = `${name} Balance`;
     document.getElementById(`account-balance-${slot}`).textContent = `${fmt(Number(account.balance))} AED`;
     document.getElementById(`account-box-title-${slot}`).textContent = `${name} My Boxes`;

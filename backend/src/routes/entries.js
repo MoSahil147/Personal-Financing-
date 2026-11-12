@@ -38,6 +38,7 @@ router.post('/', async (req, res) => {
   const primaryAccount = accounts.find((account) => account.sort === 1)?.id;
   const salaryAccount = accounts.find((account) => account.sort === 2)?.id || primaryAccount;
   const cardAccount = salaryAccount;
+  const nameOf = (id) => accounts.find((account) => account.id === id)?.name || 'the other account';
   const bankAccount = req.body?.bank_account
     || (isCardPayment ? cardAccount : category === 'Salary' ? salaryAccount : primaryAccount);
   if (!accounts.some((account) => account.id === bankAccount)) {
@@ -49,13 +50,13 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ error: 'payment_method must be debit, credit, or cash' });
   }
   if (type === 'expense' && method === 'credit' && bankAccount !== cardAccount) {
-    return res.status(400).json({ error: 'The current credit card is linked to the secondary account' });
+    return res.status(400).json({ error: `The credit card is linked to ${nameOf(cardAccount)}` });
   }
   if (isCardPayment && bankAccount !== cardAccount) {
-    return res.status(400).json({ error: 'Credit card payments must come from the secondary account' });
+    return res.status(400).json({ error: `Credit card payments must come from ${nameOf(cardAccount)}` });
   }
   if (method === 'cash' && bankAccount !== primaryAccount) {
-    return res.status(400).json({ error: 'Cash is tracked with the primary account boxes' });
+    return res.status(400).json({ error: `Cash is tracked with the ${nameOf(primaryAccount)} boxes` });
   }
   if (type === 'income' && method !== null && method !== 'cash') {
     return res.status(400).json({ error: 'income payment_method must be cash or omitted (bank)' });
