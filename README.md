@@ -73,6 +73,7 @@ dashboard shows monthly + yearly charts, budget alerts, and reminders.
   Transport box.
 - An expense paid by **debit** reduces the selected bank balance immediately;
   **credit** adds to the current card debt without reducing a bank balance.
+- Credit-card spending and bill settlement use the secondary bank account.
 - When you pay off the credit card bill, hit "Pay off now" next to the
   credit widget — it logs a debit expense for the full amount, reduces your
   bank balance, and resets the credit total to 0.

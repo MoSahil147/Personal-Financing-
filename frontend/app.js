@@ -505,6 +505,10 @@ function salaryAccountId() {
   return accountAtSlot(2)?.id || primaryAccountId();
 }
 
+function cardAccountId() {
+  return salaryAccountId();
+}
+
 function accountName(id) {
   return state.bankAccounts.find((account) => account.id === id)?.name || 'Bank account';
 }
@@ -1376,13 +1380,15 @@ document.getElementById('confirm-payment-method').addEventListener('change', () 
 
 function updateCreditAccountChoice() {
   const method = document.getElementById('confirm-payment-method').value;
-  const isCashOrCurrentCard = method === 'cash' || method === 'credit';
+  const isCardPayment = categorySelect.value === 'Credit Card Payment';
+  const isLockedAccountMethod = method === 'cash' || method === 'credit' || isCardPayment;
   const accountSelect = document.getElementById('confirm-bank-account');
-  if (isCashOrCurrentCard) {
-    accountSelect.value = primaryAccountId();
-    state.activeAccount = primaryAccountId();
+  if (isLockedAccountMethod) {
+    const accountId = method === 'credit' || isCardPayment ? cardAccountId() : primaryAccountId();
+    accountSelect.value = accountId;
+    state.activeAccount = accountId;
   }
-  accountSelect.disabled = isCashOrCurrentCard;
+  accountSelect.disabled = isLockedAccountMethod;
 }
 
 // Box picker in the confirm modal. The parser's pick is pre-selected and the
@@ -1482,7 +1488,12 @@ document.getElementById('confirm-amount').addEventListener('change', updateBucke
 
 const categorySelect = document.getElementById('confirm-category');
 categorySelect.innerHTML = CATEGORIES.map((c) => `<option value="${c}">${c}</option>`).join('');
-categorySelect.addEventListener('change', resetNewMonth);
+categorySelect.addEventListener('change', () => {
+  const previousAccount = state.activeAccount;
+  updateCreditAccountChoice();
+  if (state.activeAccount !== previousAccount) updateBucketOptions(undefined);
+  resetNewMonth();
+});
 
 function openConfirmModal(suggestion, raw_input) {
   state.pendingSuggestion = { ...suggestion, raw_input };

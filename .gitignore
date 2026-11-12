@@ -34,3 +34,7 @@ backend/test/
 .netlify/
 .vercel/
 supabase/.temp/
+
+# Phone screenshots dropped in the project folder
+/*.png
+/*.PNG

@@ -200,7 +200,9 @@ router.put('/savings-target', async (req, res) => {
 router.post('/settle-credit-card', async (req, res) => {
   try {
     const settings = await getSettings();
-    const accountId = req.body?.bank_account || settings.bank_accounts[0]?.id;
+    const accountId = req.body?.bank_account
+      || settings.bank_accounts.find((account) => account.sort === 2)?.id
+      || settings.bank_accounts[0]?.id;
     if (!settings.bank_accounts.some((account) => account.id === accountId)) return res.status(400).json({ error: 'Choose a valid bank account' });
     const amount = Number(settings.credit_outstanding);
     if (amount <= 0) return res.status(400).json({ error: 'Nothing owed on credit card' });

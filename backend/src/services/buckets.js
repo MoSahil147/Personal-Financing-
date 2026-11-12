@@ -45,9 +45,10 @@ async function realMoney(accountId) {
   const settings = await getSettings();
   const account = settings.bank_accounts.find((a) => a.id === accountId);
   if (!account) throw new Error(`Unknown bank account: ${accountId}`);
-  return math.round3(account.sort === 1
-    ? Number(account.balance) + Number(settings.cash_balance) - Number(settings.credit_outstanding)
-    : Number(account.balance));
+  const balance = Number(account.balance);
+  if (account.sort === 1) return math.round3(balance + Number(settings.cash_balance));
+  if (account.sort === 2) return math.round3(balance - Number(settings.credit_outstanding));
+  return math.round3(balance);
 }
 
 async function adjustBalances(moves) {
