@@ -1098,6 +1098,10 @@ async function refreshMonthly() {
   document.getElementById('eb-total').textContent = fmt(summary.expense);
   document.getElementById('eb-credit').textContent = fmt(summary.expenseByMethod.credit);
   document.getElementById('eb-debit').textContent = `-${fmt(summary.expenseByMethod.debit)}`;
+  document.getElementById('eb-cash').textContent = fmt(summary.expenseByMethod.cash || 0);
+  document.getElementById('eb-cardbill').textContent = fmt(summary.cardBillPaid || 0);
+  document.getElementById('eb-cardbill-row').hidden = !(summary.cardBillPaid > 0);
+  document.getElementById('month-spent-all').textContent = fmt(Object.values(summary.expenseByAccount).reduce((s, n) => s + n, 0));
   for (const slot of [1, 2]) {
     const account = accountAtSlot(slot);
     if (account) document.getElementById(`month-spent-${slot}`).textContent = fmt(summary.expenseByAccount[account.id] || 0);
@@ -1246,6 +1250,10 @@ async function refreshYearly() {
   document.getElementById('year-eb-total').textContent = fmt(summary.expense);
   document.getElementById('year-eb-credit').textContent = fmt(summary.expenseByMethod.credit);
   document.getElementById('year-eb-debit').textContent = `-${fmt(summary.expenseByMethod.debit)}`;
+  document.getElementById('year-eb-cash').textContent = fmt(summary.expenseByMethod.cash || 0);
+  document.getElementById('year-eb-cardbill').textContent = fmt(summary.cardBillPaid || 0);
+  document.getElementById('year-eb-cardbill-row').hidden = !(summary.cardBillPaid > 0);
+  document.getElementById('year-spent-all').textContent = fmt(Object.values(summary.expenseByAccount).reduce((s, n) => s + n, 0));
   for (const slot of [1, 2]) {
     const account = accountAtSlot(slot);
     if (account) document.getElementById(`year-spent-${slot}`).textContent = fmt(summary.expenseByAccount[account.id] || 0);
@@ -1891,10 +1899,13 @@ function buildMonthWorkbook(ExcelJS, data) {
     Object.entries(bySource).sort((a, b) => b[1] - a[1]), [null, XL_MONEY], { total: [2] });
 
   const boxesTotal = sum(buckets, (b) => Number(b.balance));
+  const banksTotal = sum(bankAccounts || [], (a) => Number(a.balance));
   at = xlSection(ws, at, 'Balances right now', ['', 'AED'], [
     ...(bankAccounts || []).map((a) => [a.name, Number(a.balance)]),
     ['Cash on hand', Number(settings.cash_balance)],
+    ['Total capital (all banks + cash)', banksTotal + Number(settings.cash_balance)],
     ['Owed on credit card', Number(settings.credit_outstanding)],
+    ...(bankAccounts || []).map((a) => [`In ${a.name} boxes`, sum(buckets.filter((b) => b.account_id === a.id), (b) => Number(b.balance))]),
     ['In all boxes', boxesTotal],
     ...(purses.length ? [['On bus cards', sum(purses, (p) => Number(p.balance))]] : []),
   ], [null, XL_MONEY]);

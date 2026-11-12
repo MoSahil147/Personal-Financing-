@@ -6,6 +6,12 @@ const { money } = require('../services/bucketMath');
 
 const router = express.Router();
 
+// Paying the card bill isn't new spending - the purchases were already counted
+// when they were made on the card - so it's kept out of every spending total
+// (same rule as the Excel report).
+const isCardBill = (e) => e.type === 'expense' && e.category === 'Credit Card Payment';
+const methodKey = (e) => (e.payment_method === 'credit' ? 'credit' : e.payment_method === 'cash' ? 'cash' : 'debit');
+
 function monthRange(year, month) {
   const start = `${year}-${String(month).padStart(2, '0')}-01`;
   const end = new Date(Number(year), Number(month), 1).toISOString().slice(0, 10);
@@ -27,21 +33,23 @@ router.get('/monthly', async (req, res) => {
   if (error) return res.status(500).json({ error: error.message });
 
   const income = entries.filter((e) => e.type === 'income').reduce((s, e) => s + Number(e.amount), 0);
-  const expense = entries.filter((e) => e.type === 'expense').reduce((s, e) => s + Number(e.amount), 0);
+  const spending = entries.filter((e) => e.type === 'expense' && !isCardBill(e));
+  const expense = spending.reduce((s, e) => s + Number(e.amount), 0);
+  const cardBillPaid = entries.filter(isCardBill).reduce((s, e) => s + Number(e.amount), 0);
 
   const byCategory = {};
   const expenseByAccount = {};
   const byClassification = { need: 0, want: 0, luxury: 0 };
-  const expenseByMethod = { debit: 0, credit: 0 };
+  const expenseByMethod = { debit: 0, credit: 0, cash: 0 };
   let investedThisMonth = 0;
-  for (const e of entries.filter((e) => e.type === 'expense')) {
+  for (const e of spending) {
     byCategory[e.category] = (byCategory[e.category] || 0) + Number(e.amount);
     expenseByAccount[e.bank_account] = (expenseByAccount[e.bank_account] || 0) + Number(e.amount);
     if (e.classification && byClassification[e.classification] !== undefined) {
       byClassification[e.classification] += Number(e.amount);
     }
     if (e.classification === 'investment') investedThisMonth += Number(e.amount);
-    expenseByMethod[e.payment_method === 'credit' ? 'credit' : 'debit'] += Number(e.amount);
+    expenseByMethod[methodKey(e)] += Number(e.amount);
   }
 
   const { data: yearEntries, error: yearErr } = await supabase
@@ -114,6 +122,7 @@ router.get('/monthly', async (req, res) => {
   res.json({
     income,
     expense,
+    cardBillPaid,
     expenseByMethod,
     expenseByAccount,
     savings,
@@ -143,10 +152,11 @@ router.get('/yearly', async (req, res) => {
   const months = Array.from({ length: 12 }, (_, i) => ({ month: i + 1, income: 0, expense: 0, invested: 0 }));
   const byCategory = {};
   const expenseByAccount = {};
-  const expenseByMethod = { debit: 0, credit: 0 };
+  const expenseByMethod = { debit: 0, credit: 0, cash: 0 };
   let investedThisYear = 0;
   let income = 0;
   let expense = 0;
+  let cardBillPaid = 0;
 
   for (const e of entries) {
     const m = Number(e.entry_date.slice(5, 7)) - 1;
@@ -154,12 +164,14 @@ router.get('/yearly', async (req, res) => {
     if (e.type === 'income') {
       months[m].income += amount;
       income += amount;
+    } else if (isCardBill(e)) {
+      cardBillPaid += amount;
     } else {
       months[m].expense += amount;
       expense += amount;
       byCategory[e.category] = (byCategory[e.category] || 0) + amount;
       expenseByAccount[e.bank_account] = (expenseByAccount[e.bank_account] || 0) + amount;
-      expenseByMethod[e.payment_method === 'credit' ? 'credit' : 'debit'] += amount;
+      expenseByMethod[methodKey(e)] += amount;
       if (e.classification === 'investment') {
         months[m].invested += amount;
         investedThisYear += amount;
@@ -173,6 +185,7 @@ router.get('/yearly', async (req, res) => {
     income,
     expense,
     savings: income - expense,
+    cardBillPaid,
     expenseByMethod,
     expenseByAccount,
     months: withSavings,
