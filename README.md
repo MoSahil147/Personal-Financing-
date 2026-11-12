@@ -19,7 +19,13 @@ dashboard shows monthly + yearly charts, budget alerts, and reminders.
 1. Create a project at supabase.com.
 2. Open the SQL editor and run `backend/schema.sql`.
    Then run `backend/migrations/2026-09-24-budget-boxes.sql` (budget boxes).
-   Then run the other files in `backend/migrations/` in date order.
+   Then run the remaining migration files in date order, ending with
+   `backend/migrations/2026-11-13-bank-accounts.sql`. It creates
+   two account-specific box sets, copies the existing box
+   balances/settings/history to the primary account, and starts the secondary
+   account at zero. Account display names live in Supabase, not in this repo.
+   It is additive: it does not drop or replace your existing tables.
+   Run it before deploying the matching backend/frontend changes.
 3. Grab your Project URL and `service_role` key (Settings → API).
 4. Seed your real starting bank balance (never commit this number to git —
    run it directly in the Supabase SQL editor, or use the app's PUT
@@ -55,10 +61,18 @@ dashboard shows monthly + yearly charts, budget alerts, and reminders.
 - Set budgets first via the API (or we can add a small settings UI later),
   e.g. category `groceries` with a limit, or `overall` for a whole-month cap.
 - Type entries into the chat bar at the bottom; confirm/edit the parsed
-  suggestion before it saves — including whether an expense was paid by
-  **debit** (cuts from your bank balance immediately) or **credit** (adds to
-  the "owed on credit card" total shown top-right, without touching your
-  bank balance).
+  suggestion before it saves, including which bank account and box it uses.
+  Salary income defaults to the secondary account and is split into that
+  account's boxes by their percentages; the primary account's boxes remain separate.
+- Use the two My Boxes sections to see each account's allocations independently.
+  "Move between boxes" supports both within-account moves and transfers from
+  a box in one account to a box in the other. Enter the bank's transfer fee
+  separately (use 0 when there is none); a nonzero fee is logged as an expense.
+- Expenses are attributed to the selected account in the monthly/yearly
+  account breakdowns and charts. Hafilat top-ups use the selected account's
+  Transport box.
+- An expense paid by **debit** reduces the selected bank balance immediately;
+  **credit** adds to the current card debt without reducing a bank balance.
 - When you pay off the credit card bill, hit "Pay off now" next to the
   credit widget — it logs a debit expense for the full amount, reduces your
   bank balance, and resets the credit total to 0.
@@ -69,3 +83,9 @@ dashboard shows monthly + yearly charts, budget alerts, and reminders.
 No personal financial figures (salary, rent, budget limits, etc.) are
 hardcoded anywhere in this repo — they only ever live in your Supabase
 database, entered through the app itself.
+
+The bank-account migration contains no personal amounts: the primary account
+is seeded from the existing Supabase `settings.bank_balance`, the secondary
+account starts at 0, and its box percentages/settings are copied from the
+existing boxes. Display names, salary, balances, rent, percentages, and transfer
+amounts stay in Supabase at runtime and are not written into source code.

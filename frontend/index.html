@@ -22,8 +22,12 @@
     <div class="card" id="balances-card">
       <div class="balance-row">
         <div class="balance-box">
-          <div class="label">Bank Balance</div>
-          <div class="value" id="bank-balance">-</div>
+          <div class="label" id="account-balance-label-1">Account 1 Balance</div>
+          <div class="value" id="account-balance-1">-</div>
+        </div>
+        <div class="balance-box">
+          <div class="label" id="account-balance-label-2">Account 2 Balance</div>
+          <div class="value" id="account-balance-2">-</div>
         </div>
         <div class="balance-box">
           <div class="label">Cash on Hand</div>
@@ -60,30 +64,60 @@
         <h2>My Boxes</h2>
         <button type="button" id="transfer-open-btn" class="btn-secondary">Move between boxes</button>
       </div>
-      <div class="boxes-totals">
-        <span>In boxes <strong id="boxes-total">-</strong></span>
-        <span>Real money <strong id="boxes-real">-</strong></span>
-      </div>
-      <div id="boxes-setup" hidden>
-        <p class="boxes-setup-text">Set up your boxes from the money you have now: rent is covered first, the rest is split by your percentages.</p>
-        <div id="boxes-setup-preview"></div>
-        <button id="boxes-setup-btn">Set up my boxes</button>
-      </div>
-      <div id="boxes-grid"></div>
-      <div id="buffer-strip"></div>
-      <div id="box-detail" hidden></div>
-      <div class="box-pie-head">
-        <div class="tab-buttons">
-          <button id="box-pie-balances" class="active">Balances now</button>
-          <button id="box-pie-spent">Spent this month</button>
+      <section class="account-box-panel" data-account-slot="1">
+        <h3 id="account-box-title-1">Account 1 My Boxes</h3>
+        <div class="boxes-totals">
+          <span>In boxes <strong id="boxes-total-1">-</strong></span>
+          <span>Real money <strong id="boxes-real-1">-</strong></span>
         </div>
-      </div>
-      <div class="chart-box"><canvas id="box-pie-chart"></canvas></div>
-      <div id="box-pie-empty" class="box-pie-empty" hidden>Nothing to show yet.</div>
-      <details id="box-history">
-        <summary>Box history</summary>
-        <ul id="box-history-list"></ul>
-      </details>
+        <div id="boxes-setup-1" hidden>
+          <p class="boxes-setup-text">Set up these boxes from the money you have now: rent is covered first, the rest is split by your percentages.</p>
+          <div id="boxes-setup-preview-1"></div>
+          <button id="boxes-setup-btn-1">Set up boxes</button>
+        </div>
+        <div id="boxes-grid-1"></div>
+        <div id="buffer-strip-1"></div>
+        <div id="box-detail-1" hidden></div>
+        <div class="box-pie-head">
+          <div class="tab-buttons">
+            <button id="box-pie-balances-1" class="active">Balances now</button>
+            <button id="box-pie-spent-1">Spent this month</button>
+          </div>
+        </div>
+        <div class="chart-box"><canvas id="box-pie-chart-1"></canvas></div>
+        <div id="box-pie-empty-1" class="box-pie-empty" hidden>Nothing to show yet.</div>
+        <details id="box-history-1">
+          <summary id="box-history-summary-1">Account 1 box history</summary>
+          <ul id="box-history-list-1"></ul>
+        </details>
+      </section>
+      <section class="account-box-panel" data-account-slot="2">
+        <h3 id="account-box-title-2">Account 2 My Boxes</h3>
+        <div class="boxes-totals">
+          <span>In boxes <strong id="boxes-total-2">-</strong></span>
+          <span>Real money <strong id="boxes-real-2">-</strong></span>
+        </div>
+        <div id="boxes-setup-2" hidden>
+          <p class="boxes-setup-text">Set up these boxes from the money you have now: rent is covered first, the rest is split by your percentages.</p>
+          <div id="boxes-setup-preview-2"></div>
+          <button id="boxes-setup-btn-2">Set up boxes</button>
+        </div>
+        <div id="boxes-grid-2"></div>
+        <div id="buffer-strip-2"></div>
+        <div id="box-detail-2" hidden></div>
+        <div class="box-pie-head">
+          <div class="tab-buttons">
+            <button id="box-pie-balances-2" class="active">Balances now</button>
+            <button id="box-pie-spent-2">Spent this month</button>
+          </div>
+        </div>
+        <div class="chart-box"><canvas id="box-pie-chart-2"></canvas></div>
+        <div id="box-pie-empty-2" class="box-pie-empty" hidden>Nothing to show yet.</div>
+        <details id="box-history-2">
+          <summary id="box-history-summary-2">Account 2 box history</summary>
+          <ul id="box-history-list-2"></ul>
+        </details>
+      </section>
     </div>
 
     <div class="card" id="purses-card" hidden>
@@ -134,6 +168,12 @@
           <div class="eb-row eb-credit"><span>Credit Card</span><span id="eb-credit">-</span></div>
           <div class="eb-row eb-debit"><span>Debit Card</span><span id="eb-debit">-</span></div>
         </div>
+        <div class="expense-breakdown">
+          <div class="eb-row"><span id="month-spent-label-1">Spent from Account 1</span><span id="month-spent-1">-</span></div>
+          <div class="eb-row"><span id="month-spent-label-2">Spent from Account 2</span><span id="month-spent-2">-</span></div>
+        </div>
+        <h3>Expenses by bank account</h3>
+        <div class="chart-box"><canvas id="month-account-chart"></canvas></div>
         <div id="savings-goal-row" class="savings-goal" hidden>
           <div class="savings-goal-labels">
             <span>Savings goal: <span id="savings-goal-amount">-</span></span>
@@ -163,6 +203,12 @@
           <div class="eb-row eb-credit"><span>Credit Card</span><span id="year-eb-credit">-</span></div>
           <div class="eb-row eb-debit"><span>Debit Card</span><span id="year-eb-debit">-</span></div>
         </div>
+        <div class="expense-breakdown">
+          <div class="eb-row"><span id="year-spent-label-1">Spent from Account 1</span><span id="year-spent-1">-</span></div>
+          <div class="eb-row"><span id="year-spent-label-2">Spent from Account 2</span><span id="year-spent-2">-</span></div>
+        </div>
+        <h3>Expenses by bank account</h3>
+        <div class="chart-box"><canvas id="year-account-chart"></canvas></div>
         <div class="investment-box">
           <div class="label">Invested in stock market</div>
           <div class="investment-row">
@@ -202,6 +248,9 @@
         <option value="expense">Expense</option>
         <option value="income">Income</option>
       </select>
+      <label>Account for this entry</label>
+      <select id="confirm-bank-account">
+      </select>
       <label>Amount</label>
       <input type="number" id="confirm-amount" step="0.001" min="0" inputmode="decimal" />
       <label>Category</label>
@@ -213,6 +262,7 @@
         <option value="want">Want</option>
         <option value="luxury">Luxury</option>
         <option value="savings">Savings</option>
+        <option value="investment">Investment</option>
       </select>
       <label id="confirm-payment-label">Method</label>
       <select id="confirm-payment-method"></select>
@@ -275,6 +325,8 @@
         <option value="deposit">Deposited cash into the bank</option>
         <option value="withdraw">Withdrew cash from the bank</option>
       </select>
+      <label>Bank account</label>
+      <select id="move-bank-account"></select>
       <label>Amount</label>
       <input type="number" id="move-amount" step="0.001" min="0" inputmode="decimal" />
       <div id="move-hint" class="confirm-hint"></div>
@@ -291,8 +343,10 @@
         </div>
       </div>
       <label>From</label>
+      <select id="transfer-from-account"></select>
       <select id="transfer-from"></select>
       <label>To</label>
+      <select id="transfer-to-account"></select>
       <select id="transfer-to"></select>
       <label>Amount</label>
       <input type="number" id="transfer-amount" step="0.001" min="0" inputmode="decimal" />
@@ -300,6 +354,10 @@
         <input type="checkbox" id="transfer-all" />
         <span>Move everything in the box</span>
       </label>
+      <div id="transfer-fee-row">
+        <label>Bank transfer charge (enter 0 if none)</label>
+        <input type="number" id="transfer-fee" step="0.001" min="0" value="0" inputmode="decimal" />
+      </div>
       <div id="transfer-hint" class="confirm-hint"></div>
     </div>
   </div>

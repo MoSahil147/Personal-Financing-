@@ -5,6 +5,32 @@ node_modules/
 .DS_Store
 dist/
 
-# Personal budget numbers - kept on this computer only, never on GitHub
+# Local financial records and exports - never commit private account data
+*.csv
+*.xlsx
+*.xls
+*.ods
+*.pdf
+*.db
+*.sqlite
+*.sqlite3
+*.dump
+*.backup
+*.log
+
+# Local credentials, certificates, and service-account files
+*.pem
+*.key
+*.p12
+*.pfx
+service-account*.json
+credentials.json
+
+# Personal plans and test fixtures can contain real budget figures
 docs/
 backend/test/
+
+# Local deployment / database tooling state
+.netlify/
+.vercel/
+supabase/.temp/

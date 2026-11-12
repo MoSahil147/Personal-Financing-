@@ -263,6 +263,23 @@ function computeTransfer(from, to, amount, boxes) {
   return { from, to, amount: n };
 }
 
+function computeInterAccountTransfer(from, to, amount, fee, fromAccount, toAccount, boxes) {
+  if (fromAccount === toAccount) throw new Error('Pick two different bank accounts');
+  if (!BUCKET_KEYS.includes(from)) throw new Error(`Unknown box: ${from}`);
+  if (!BUCKET_KEYS.includes(to)) throw new Error(`Unknown box: ${to}`);
+  const available = round3(Number(boxes[from]?.balance));
+  const transferAmount = amount == null ? available : round3(Number(amount));
+  if (!(transferAmount > 0)) throw new Error(amount == null ? 'That box is empty' : 'amount must be a positive number');
+  if (transferAmount > available) throw new Error(`That box only has ${money(available)}`);
+  const feeAmount = Number(fee);
+  if (!Number.isFinite(feeAmount) || feeAmount < 0) throw new Error('Transfer fee must be 0 or more');
+  const total = round3(transferAmount + feeAmount);
+  if (total > available) {
+    throw new Error(`The source box needs ${money(total)} including the fee`);
+  }
+  return { from, to, amount: transferAmount, fee: round3(feeAmount), sourceTotal: total };
+}
+
 module.exports = {
   BUCKET_KEYS,
   PICKABLE_KEYS,
@@ -276,4 +293,5 @@ module.exports = {
   computeClose,
   computeSweep,
   computeTransfer,
+  computeInterAccountTransfer,
 };

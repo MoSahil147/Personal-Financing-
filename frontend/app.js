@@ -74,13 +74,17 @@ const state = {
   yearlyPieChart: null,
   categoryBarChart: null,
   yearlyCategoryBarChart: null,
+  accountSpendChart: null,
+  yearlyAccountSpendChart: null,
   pendingSuggestion: null,
-  boxes: [],
-  boxSpent: {},
-  boxPieMode: 'balances',
-  boxPieChart: null,
+  bankAccounts: [],
+  boxesByAccount: {},
+  boxSpentByAccount: {},
+  boxPieMode: {},
+  boxPieCharts: {},
   ccPieChart: null,
-  openBox: null, // box whose activity is shown below the grid
+  openBoxes: {},
+  activeAccount: null,
   purses: [],
   openPurse: null, // card whose history is shown below the cards
 };
@@ -380,18 +384,36 @@ document.getElementById('reminder-form').addEventListener('submit', async (e) =>
 
 async function refreshBalances() {
   const settings = await api('/api/settings');
-  const bank = Number(settings.bank_balance);
+  state.bankAccounts = (settings.bank_accounts || []).slice().sort((a, b) => a.sort - b.sort);
+  const balances = Object.fromEntries(state.bankAccounts.map((a) => [a.id, Number(a.balance)]));
+  state.bankBalances = balances;
+  state.activeAccount ||= primaryAccountId();
+  for (const slot of [1, 2]) {
+    const account = accountAtSlot(slot);
+    if (!account) continue;
+    const name = account.name || `Account ${slot}`;
+    document.getElementById(`account-balance-label-${slot}`).textContent = `${name} Balance`;
+    document.getElementById(`account-balance-${slot}`).textContent = `${fmt(Number(account.balance))} AED`;
+    document.getElementById(`account-box-title-${slot}`).textContent = `${name} My Boxes`;
+    document.getElementById(`box-history-summary-${slot}`).textContent = `${name} box history`;
+    document.getElementById(`month-spent-label-${slot}`).textContent = `Spent from ${name}`;
+    document.getElementById(`year-spent-label-${slot}`).textContent = `Spent from ${name}`;
+  }
+  for (const id of ['confirm-bank-account', 'move-bank-account']) {
+    const select = document.getElementById(id);
+    const selected = select.value || state.activeAccount;
+    select.innerHTML = accountOptions(selected);
+    if (accountIds().includes(selected)) select.value = selected;
+  }
   const cash = Number(settings.cash_balance);
-  state.bank = bank;
   state.cash = cash;
-  document.getElementById('bank-balance').textContent = `${fmt(bank)} AED`;
   document.getElementById('cash-balance').textContent = `${fmt(cash)} AED`;
   const owed = Number(settings.credit_outstanding);
   const limit = Number(settings.credit_card_limit) || 0;
   document.getElementById('credit-outstanding').textContent = `${fmt(owed)} AED`;
   document.getElementById('settle-credit-btn').hidden = owed <= 0;
   document.getElementById('credit-box').classList.toggle('over-limit', limit > 0 && owed >= limit);
-  document.getElementById('total-capital').textContent = `${fmt(bank + cash)} AED`;
+  document.getElementById('total-capital').textContent = `${fmt(Object.values(balances).reduce((sum, n) => sum + n, 0) + cash)} AED`;
 }
 
 document.getElementById('settle-credit-btn').addEventListener('click', async () => {
@@ -411,6 +433,7 @@ document.getElementById('settle-credit-btn').addEventListener('click', async () 
 // income or spending and the boxes don't change.
 function openMoveModal(direction, amount = null) {
   document.getElementById('move-direction').value = direction;
+  document.getElementById('move-bank-account').value = state.activeAccount;
   document.getElementById('move-amount').value = amount ?? '';
   updateMoveHint();
   document.getElementById('move-modal').hidden = false;
@@ -419,13 +442,14 @@ function openMoveModal(direction, amount = null) {
 
 async function updateMoveHint() {
   const deposit = document.getElementById('move-direction').value === 'deposit';
+  const accountId = document.getElementById('move-bank-account').value;
   const amount = Number(document.getElementById('move-amount').value) || 0;
   const hint = document.getElementById('move-hint');
-  const bank = state.bank ?? 0;
+  const bank = state.bankBalances?.[accountId] ?? 0;
   const cash = state.cash ?? 0;
   const newBank = deposit ? bank + amount : bank - amount;
   const newCash = deposit ? cash - amount : cash + amount;
-  hint.innerHTML = `Bank ${fmt(bank)} → <strong>${fmt(newBank)}</strong> · Cash ${fmt(cash)} → <strong>${fmt(newCash)}</strong><br>`
+  hint.innerHTML = `${escapeHtml(accountName(accountId))} ${fmt(bank)} → <strong>${fmt(newBank)}</strong> · Cash ${fmt(cash)} → <strong>${fmt(newCash)}</strong><br>`
     + `Total capital stays ${fmt(bank + cash)} - just your own money changing place, not income or spending, so your boxes don't change.`
     + (newCash < 0 ? ' <span class="bad">That\'s more cash than you have.</span>' : '');
 }
@@ -433,6 +457,7 @@ async function updateMoveHint() {
 document.getElementById('deposit-cash-btn').addEventListener('click', () => openMoveModal('deposit'));
 document.getElementById('withdraw-cash-btn').addEventListener('click', () => openMoveModal('withdraw'));
 document.getElementById('move-direction').addEventListener('change', updateMoveHint);
+document.getElementById('move-bank-account').addEventListener('change', updateMoveHint);
 document.getElementById('move-amount').addEventListener('input', updateMoveHint);
 document.getElementById('move-cancel').addEventListener('click', () => { document.getElementById('move-modal').hidden = true; });
 
@@ -447,10 +472,11 @@ document.getElementById('move-save').addEventListener('click', async () => {
   if (btn.disabled) return;
   btn.disabled = true;
   try {
-    await api(`/api/settings/${deposit ? 'deposit-cash' : 'withdraw-cash'}`, { method: 'POST', body: JSON.stringify({ amount }) });
+    const bank_account = document.getElementById('move-bank-account').value;
+    await api(`/api/settings/${deposit ? 'deposit-cash' : 'withdraw-cash'}`, { method: 'POST', body: JSON.stringify({ amount, bank_account }) });
     document.getElementById('move-modal').hidden = true;
     loadSection(refreshBalances, 'balances');
-    loadSection(refreshBoxes, 'boxes');
+    await loadSection(() => refreshBoxes(bank_account), `${accountName(bank_account)} boxes`);
   } catch (err) {
     alert(err.message);
   } finally {
@@ -459,48 +485,109 @@ document.getElementById('move-save').addEventListener('click', async () => {
 });
 
 // Box to box. Real money doesn't change, only which box it sits in.
-function openTransferModal({ from = null, to = null, amount = null, all = false } = {}) {
-  const options = state.boxes.map((b) => `<option value="${b.key}">${escapeHtml(b.name)}</option>`).join('');
-  const fromSel = document.getElementById('transfer-from');
-  const toSel = document.getElementById('transfer-to');
-  fromSel.innerHTML = `<option value="">Pick a box</option>${options}`;
-  toSel.innerHTML = `<option value="">Pick a box</option>${options}`;
-  fromSel.value = from || '';
-  toSel.value = to || '';
+function accountIds() {
+  return state.bankAccounts.map((account) => account.id);
+}
+
+function accountAtSlot(slot) {
+  return state.bankAccounts[slot - 1];
+}
+
+function accountSlot(id) {
+  return state.bankAccounts.findIndex((account) => account.id === id) + 1;
+}
+
+function primaryAccountId() {
+  return accountAtSlot(1)?.id || '';
+}
+
+function salaryAccountId() {
+  return accountAtSlot(2)?.id || primaryAccountId();
+}
+
+function accountName(id) {
+  return state.bankAccounts.find((account) => account.id === id)?.name || 'Bank account';
+}
+
+function accountOptions(selected) {
+  return state.bankAccounts.map((account) =>
+    `<option value="${escapeHtml(account.id)}"${selected === account.id ? ' selected' : ''}>${escapeHtml(account.name)}</option>`).join('');
+}
+
+function boxesFor(accountId) {
+  return state.boxesByAccount[accountId] || [];
+}
+
+function updateTransferBoxOptions(selectId, accountId, selected) {
+  const select = document.getElementById(selectId);
+  select.innerHTML = '<option value="">Pick a box</option>' + boxesFor(accountId)
+    .map((b) => `<option value="${b.key}">${escapeHtml(b.name)} (${fmt(b.balance)})</option>`).join('');
+  select.value = boxesFor(accountId).some((b) => b.key === selected) ? selected : '';
+}
+
+function openTransferModal({ from = null, to = null, amount = null, all = false, fromAccount = state.activeAccount, toAccount = state.activeAccount } = {}) {
+  const fromAccountSelect = document.getElementById('transfer-from-account');
+  const toAccountSelect = document.getElementById('transfer-to-account');
+  fromAccountSelect.innerHTML = accountOptions(fromAccount);
+  toAccountSelect.innerHTML = accountOptions(toAccount);
+  updateTransferBoxOptions('transfer-from', fromAccount, from);
+  updateTransferBoxOptions('transfer-to', toAccount, to);
   document.getElementById('transfer-amount').value = amount ?? '';
+  document.getElementById('transfer-fee').value = '0';
   document.getElementById('transfer-all').checked = all;
   updateTransferHint();
   document.getElementById('transfer-modal').hidden = false;
 }
 
+document.getElementById('transfer-from-account').addEventListener('change', () => {
+  updateTransferBoxOptions('transfer-from', document.getElementById('transfer-from-account').value);
+  updateTransferHint();
+});
+document.getElementById('transfer-to-account').addEventListener('change', () => {
+  updateTransferBoxOptions('transfer-to', document.getElementById('transfer-to-account').value);
+  updateTransferHint();
+});
+
 function updateTransferHint() {
-  const from = state.boxes.find((b) => b.key === document.getElementById('transfer-from').value);
-  const to = state.boxes.find((b) => b.key === document.getElementById('transfer-to').value);
+  const fromAccount = document.getElementById('transfer-from-account').value;
+  const toAccount = document.getElementById('transfer-to-account').value;
+  const fromKey = document.getElementById('transfer-from').value;
+  const toKey = document.getElementById('transfer-to').value;
+  const from = boxesFor(fromAccount).find((b) => b.key === fromKey);
+  const to = boxesFor(toAccount).find((b) => b.key === toKey);
   const all = document.getElementById('transfer-all').checked;
   const amountInput = document.getElementById('transfer-amount');
   amountInput.disabled = all;
-  if (all && from) amountInput.value = from.balance;
+  const fee = Number(document.getElementById('transfer-fee').value) || 0;
+  if (all && from) amountInput.value = Math.max(0, from.balance - (fromAccount === toAccount ? 0 : fee));
   const hint = document.getElementById('transfer-hint');
   if (!from || !to) { hint.innerHTML = ''; return; }
-  if (from.key === to.key) { hint.innerHTML = '<span class="bad">Pick two different boxes.</span>'; return; }
+  if (fromAccount === toAccount && from.key === to.key) { hint.innerHTML = '<span class="bad">Pick two different boxes.</span>'; return; }
+  if (fromAccount === toAccount && fee > 0) { hint.innerHTML = '<span class="bad">A bank fee only applies between different accounts.</span>'; return; }
   const amount = Number(amountInput.value) || 0;
+  const outgoing = amount + (fromAccount === toAccount ? 0 : fee);
   const newTo = to.balance + amount;
-  hint.innerHTML = `${escapeHtml(from.name)} ${fmt(from.balance)} → <strong>${fmt(from.balance - amount)}</strong> · `
-    + `${escapeHtml(to.name)} ${fmt(to.balance)} → <strong>${fmt(newTo)}</strong><br>Your real money stays the same - only the boxes change.`
-    + (amount > from.balance ? ' <span class="bad">That\'s more than the box has.</span>' : '')
+  hint.innerHTML = `${escapeHtml(accountName(fromAccount))} ${escapeHtml(from.name)} ${fmt(from.balance)} → <strong>${fmt(from.balance - outgoing)}</strong> · `
+    + `${escapeHtml(accountName(toAccount))} ${escapeHtml(to.name)} ${fmt(to.balance)} → <strong>${fmt(newTo)}</strong><br>`
+    + (fromAccount === toAccount ? 'Your real account balances stay the same.' : `The destination receives ${fmt(amount)}${fee ? `; ${fmt(fee)} is charged separately from the source box` : ''}.`)
+    + (outgoing > from.balance ? ' <span class="bad">The source box does not have enough for the transfer and fee.</span>' : '')
     + (to.cap != null && newTo > Number(to.cap) ? ` <span class="bad">Over its ${fmt(to.cap)} limit - the extra moves on at month end.</span>` : '');
 }
 
 document.getElementById('transfer-open-btn').addEventListener('click', () => openTransferModal());
 ['transfer-from', 'transfer-to', 'transfer-all'].forEach((id) => document.getElementById(id).addEventListener('change', updateTransferHint));
 document.getElementById('transfer-amount').addEventListener('input', updateTransferHint);
+document.getElementById('transfer-fee').addEventListener('input', updateTransferHint);
 document.getElementById('transfer-cancel').addEventListener('click', () => { document.getElementById('transfer-modal').hidden = true; });
 
 document.getElementById('transfer-save').addEventListener('click', async () => {
   const from = document.getElementById('transfer-from').value;
   const to = document.getElementById('transfer-to').value;
+  const fromAccount = document.getElementById('transfer-from-account').value;
+  const toAccount = document.getElementById('transfer-to-account').value;
   const all = document.getElementById('transfer-all').checked;
   const amount = Number(document.getElementById('transfer-amount').value);
+  const fee = Number(document.getElementById('transfer-fee').value) || 0;
   if (!from || !to) {
     alert('Pick both boxes.');
     return;
@@ -513,9 +600,13 @@ document.getElementById('transfer-save').addEventListener('click', async () => {
   if (btn.disabled) return;
   btn.disabled = true;
   try {
-    await api('/api/buckets/transfer', { method: 'POST', body: JSON.stringify(all ? { from, to, all: true } : { from, to, amount }) });
+    await api('/api/buckets/transfer', {
+      method: 'POST',
+      body: JSON.stringify({ from, to, from_account: fromAccount, to_account: toAccount, amount, fee, all }),
+    });
     document.getElementById('transfer-modal').hidden = true;
-    loadSection(refreshBoxes, 'boxes');
+    await Promise.all(accountIds().map((account) => loadSection(() => refreshBoxes(account), `${accountName(account)} boxes`)));
+    loadSection(refreshBalances, 'balances');
   } catch (err) {
     alert(err.message);
   } finally {
@@ -531,124 +622,134 @@ function fmt(n) {
 
 // Boxes get fixed colors by their position, so each box keeps the same color
 // on its card and in the pie (no hash collisions between the boxes).
-function boxColor(key) {
-  const i = state.boxes.findIndex((b) => b.key === key);
+function boxColor(key, accountId = primaryAccountId()) {
+  const i = boxesFor(accountId).findIndex((b) => b.key === key);
   return CHART_COLORS[Math.max(0, i) % CHART_COLORS.length];
 }
 
-function boxName(key) {
-  return state.boxes.find((b) => b.key === key)?.name || key;
+function boxName(key, accountId = primaryAccountId()) {
+  return boxesFor(accountId).find((b) => b.key === key)?.name || key;
 }
 
 // Guilt-free's limit only caps what carries over at month-end (the new 500 is
 // added on top), so it's labelled differently from the hard limits.
-function capBar(key, filled, cap) {
+function capBar(key, filled, cap, accountId) {
   const pct = Math.max(0, Math.min(100, (filled / cap) * 100));
   const label = key === 'guilt_free' ? 'Carry-over limit' : 'Limit';
-  return `<div class="box-cap-bar"><div style="width:${pct}%;background:${boxColor(key)}"></div></div>
+  return `<div class="box-cap-bar"><div style="width:${pct}%;background:${boxColor(key, accountId)}"></div></div>
     <div class="box-cap-label">${label} ${fmt(cap)}</div>`;
 }
 
-async function refreshBoxes() {
-  const data = await api('/api/buckets');
-  state.boxes = data.buckets.map((b) => ({ ...b, balance: Number(b.balance) }));
-  state.boxSpent = data.spentThisMonth || {};
+async function refreshBoxes(accountId = primaryAccountId()) {
+  const data = await api(`/api/buckets?account=${accountId}`);
+  state.boxesByAccount[accountId] = data.buckets.map((b) => ({ ...b, balance: Number(b.balance) }));
+  state.boxSpentByAccount[accountId] = data.spentThisMonth || {};
+  const suffix = `-${accountSlot(accountId)}`;
 
-  document.getElementById('boxes-total').textContent = `${fmt(data.total)} AED`;
-  document.getElementById('boxes-real').textContent = `${fmt(data.realMoney)} AED`;
+  document.getElementById(`boxes-total${suffix}`).textContent = `${fmt(data.total)} AED`;
+  document.getElementById(`boxes-real${suffix}`).textContent = `${fmt(data.realMoney)} AED`;
+  document.getElementById(`boxes-setup${suffix}`).hidden = !data.needsSetup;
+  if (data.needsSetup) await renderSetupPreview(accountId);
 
-  document.getElementById('boxes-setup').hidden = !data.needsSetup;
-  if (data.needsSetup) await renderSetupPreview();
-
-  const grid = document.getElementById('boxes-grid');
+  const grid = document.getElementById(`boxes-grid${suffix}`);
   grid.innerHTML = '';
-  for (const b of state.boxes) {
+  for (const b of boxesFor(accountId)) {
     if (b.key === 'buffer') continue;
     const card = document.createElement('div');
     card.className = 'box-card';
-    card.style.borderTopColor = boxColor(b.key);
+    card.style.borderTopColor = boxColor(b.key, accountId);
     card.innerHTML = `
       <div class="box-name">${escapeHtml(b.name)}${Number(b.percent) > 0 ? ` <span class="box-percent">${Number(b.percent)}%</span>` : ''}</div>
       <div class="box-balance ${b.balance < 0 ? 'bad' : ''}">${fmt(b.balance)}</div>
-      <div class="box-spent">Spent this month: ${fmt(state.boxSpent[b.key] || 0)}</div>
-      ${b.cap ? capBar(b.key, b.balance, Number(b.cap)) : ''}`;
-    card.classList.toggle('open', state.openBox === b.key);
-    card.addEventListener('click', () => toggleBoxDetail(b.key));
+      <div class="box-spent">Spent this month: ${fmt(state.boxSpentByAccount[accountId][b.key] || 0)}</div>
+      ${b.cap ? capBar(b.key, b.balance, Number(b.cap), accountId) : ''}`;
+    card.classList.toggle('open', state.openBoxes[accountId] === b.key);
+    card.addEventListener('click', () => toggleBoxDetail(b.key, accountId));
     grid.appendChild(card);
   }
 
-  const buffer = state.boxes.find((b) => b.key === 'buffer');
-  const bufferStrip = document.getElementById('buffer-strip');
-  bufferStrip.classList.toggle('open', state.openBox === 'buffer');
-  bufferStrip.onclick = buffer ? () => toggleBoxDetail('buffer') : null;
+  const buffer = boxesFor(accountId).find((b) => b.key === 'buffer');
+  const bufferStrip = document.getElementById(`buffer-strip${suffix}`);
+  bufferStrip.classList.toggle('open', state.openBoxes[accountId] === 'buffer');
+  bufferStrip.onclick = buffer ? () => toggleBoxDetail('buffer', accountId) : null;
   bufferStrip.innerHTML = buffer
     ? `<div class="buffer-top">
          <span>Buffer <span class="box-percent">leftovers</span></span>
          <span class="buffer-value ${buffer.balance < 0 ? 'bad' : ''}">${fmt(buffer.balance)}</span>
        </div>
-       <div class="box-cap-bar"><div style="width:${Math.max(0, Math.min(100, (buffer.balance / buffer.cap) * 100))}%;background:${boxColor('buffer')}"></div></div>
+       <div class="box-cap-bar"><div style="width:${Math.max(0, Math.min(100, (buffer.balance / buffer.cap) * 100))}%;background:${boxColor('buffer', accountId)}"></div></div>
        <div class="buffer-meta">
-         <span>Used this month: ${fmt(state.boxSpent.buffer || 0)}</span>
+         <span>Used this month: ${fmt(state.boxSpentByAccount[accountId].buffer || 0)}</span>
          <span>Limit ${fmt(buffer.cap)}</span>
        </div>`
     : '';
 
-  renderBoxPie();
-  await Promise.all([refreshBoxHistory(), renderBoxDetail()]);
+  renderBoxPie(accountId);
+  await Promise.all([refreshBoxHistory(accountId), renderBoxDetail(accountId)]);
 }
 
 // Clicking a box (or the buffer) opens its activity for this month below the
 // grid; clicking the same one again closes it.
-function toggleBoxDetail(key) {
-  state.openBox = state.openBox === key ? null : key;
-  document.querySelectorAll('#boxes-grid .box-card').forEach((card, i) => {
-    const keys = state.boxes.filter((b) => b.key !== 'buffer').map((b) => b.key);
-    card.classList.toggle('open', keys[i] === state.openBox);
+function toggleBoxDetail(key, accountId) {
+  const slot = accountSlot(accountId);
+  state.openBoxes[accountId] = state.openBoxes[accountId] === key ? null : key;
+  document.querySelectorAll(`#boxes-grid-${slot} .box-card`).forEach((card, i) => {
+    const keys = boxesFor(accountId).filter((b) => b.key !== 'buffer').map((b) => b.key);
+    card.classList.toggle('open', keys[i] === state.openBoxes[accountId]);
   });
-  document.getElementById('buffer-strip').classList.toggle('open', state.openBox === 'buffer');
-  loadSection(renderBoxDetail, 'box activity');
+  document.getElementById(`buffer-strip-${slot}`).classList.toggle('open', state.openBoxes[accountId] === 'buffer');
+  loadSection(() => renderBoxDetail(accountId), `${accountName(accountId)} box activity`);
 }
 
-// The ✕ on the activity panel closes it (same as tapping the box again).
-document.getElementById('box-detail').addEventListener('click', (e) => {
-  if (e.target.closest('.detail-close') && state.openBox) toggleBoxDetail(state.openBox);
-});
+for (const slot of [1, 2]) {
+  document.getElementById(`box-detail-${slot}`).addEventListener('click', (e) => {
+    const accountId = accountAtSlot(slot)?.id;
+    if (!accountId) return;
+    if (e.target.closest('.detail-close') && state.openBoxes[accountId]) {
+      toggleBoxDetail(state.openBoxes[accountId], accountId);
+    }
+  });
+}
 
-async function renderBoxDetail() {
-  const el = document.getElementById('box-detail');
-  const key = state.openBox;
+async function renderBoxDetail(accountId) {
+  const el = document.getElementById(`box-detail-${accountSlot(accountId)}`);
+  const key = state.openBoxes[accountId];
   el.hidden = !key;
   if (!key) return;
-  el.style.borderColor = boxColor(key);
-  el.innerHTML = `<div class="box-detail-head"><div class="detail-title"><strong>${escapeHtml(boxName(key))}</strong><span class="ledger-meta">Loading…</span></div><button type="button" class="detail-close" aria-label="Close">✕</button></div>`;
+  el.style.borderColor = boxColor(key, accountId);
+  el.innerHTML = `<div class="box-detail-head"><div class="detail-title"><strong>${escapeHtml(boxName(key, accountId))}</strong><span class="ledger-meta">Loading…</span></div><button type="button" class="detail-close" aria-label="Close">✕</button></div>`;
 
-  const { since, moves } = await api(`/api/buckets/${encodeURIComponent(key)}/activity`);
-  if (state.openBox !== key) return; // another box was opened while this loaded
+  const { since, moves } = await api(`/api/buckets/${encodeURIComponent(key)}/activity?account=${accountId}`);
+  if (state.openBoxes[accountId] !== key) return;
 
   let spent = 0;
   let added = 0;
   const rows = moves.map((m) => {
-    const out = m.from_bucket === key;
-    if (out) spent += Number(m.amount); else added += Number(m.amount);
+    const out = m.from_account === accountId && m.from_bucket === key;
+    const inAmount = Number(m.amount);
+    const outAmount = inAmount + Number(m.fee_amount || 0);
+    if (out) spent += outAmount; else added += inAmount;
     const other = out ? m.to_bucket : m.from_bucket;
+    const otherAccount = out ? m.to_account : m.from_account;
     // A spend/refund shows what it was for; a box-to-box move shows the other box.
     const title = m.entries?.category
       ? m.entries.category
-      : other ? `${out ? 'To' : 'From'} ${boxName(other)}` : moveReasonLabel(m.reason);
+      : other ? `${out ? 'To' : 'From'} ${accountName(otherAccount)} ${boxName(other, otherAccount)}` : moveReasonLabel(m.reason);
     const meta = [m.move_date, moveReasonLabel(m.reason)];
-    if (m.entries?.category && other) meta.push(`${out ? 'to' : 'from'} ${boxName(other)}`);
+    if (m.entries?.category && other) meta.push(`${out ? 'to' : 'from'} ${accountName(otherAccount)} ${boxName(other, otherAccount)}`);
+    if (m.fee_amount > 0) meta.push(`bank fee ${fmt(m.fee_amount)}`);
     if (m.entries?.payment_method === 'credit') meta.push('card');
     if (m.entries?.note) meta.push(m.entries.note);
     return `<li>
       <span><strong>${escapeHtml(title)}</strong><span class="ledger-meta">${escapeHtml(meta.join(' · '))}</span></span>
-      <span class="${out ? 'bad' : 'good'}">${out ? '−' : '+'}${fmt(m.amount)}</span>
+      <span class="${out ? 'bad' : 'good'}">${out ? '−' : '+'}${fmt(out ? outAmount : inAmount)}</span>
     </li>`;
   });
 
   el.innerHTML = `
     <div class="box-detail-head">
       <div class="detail-title">
-        <strong>${escapeHtml(boxName(key))}</strong>
+        <strong>${escapeHtml(boxName(key, accountId))}</strong>
         <span class="ledger-meta">${since ? `Since ${since.slice(0, 10)}` : 'All time'} · in ${fmt(added)} · out ${fmt(spent)}</span>
       </div>
       <button type="button" class="detail-close" aria-label="Close">✕</button>
@@ -656,53 +757,59 @@ async function renderBoxDetail() {
     <ul class="box-detail-list">${rows.join('') || '<li><span class="ledger-meta">Nothing in or out of this box this month.</span></li>'}</ul>`;
 }
 
-async function renderSetupPreview() {
-  const p = await api('/api/buckets/setup-preview');
-  const el = document.getElementById('boxes-setup-preview');
-  const btn = document.getElementById('boxes-setup-btn');
+async function renderSetupPreview(accountId) {
+  const p = await api(`/api/buckets/setup-preview?account=${accountId}`);
+  const slot = accountSlot(accountId);
+  const el = document.getElementById(`boxes-setup-preview-${slot}`);
+  const btn = document.getElementById(`boxes-setup-btn-${slot}`);
   btn.disabled = !(p.total > 0);
   if (!(p.total > 0)) {
-    el.innerHTML = '<div class="setup-total">Set your bank/cash balance first - there\'s nothing to split yet.</div>';
+    el.innerHTML = '<div class="setup-total">Set this account balance first - there\'s nothing to split yet.</div>';
     return;
   }
-  el.innerHTML = `<div class="setup-total">From ${fmt(p.total)} AED (bank + cash − card owed):</div>`
-    + state.boxes
+  el.innerHTML = `<div class="setup-total">From ${fmt(p.total)} AED in ${escapeHtml(accountName(accountId))}:</div>`
+    + boxesFor(accountId)
       .filter((b) => p.shares[b.key])
       .map((b) => `<div class="eb-row"><span>${escapeHtml(b.name)}</span><span>${fmt(p.shares[b.key])}</span></div>`)
       .join('');
 }
 
-document.getElementById('boxes-setup-btn').addEventListener('click', async () => {
-  if (!confirm('Split your current money into the boxes as shown?')) return;
-  try {
-    await api('/api/buckets/setup', { method: 'POST' });
-    loadSection(refreshBoxes, 'boxes');
-  } catch (err) {
-    alert(err.message);
-  }
-});
+for (const slot of [1, 2]) {
+  document.getElementById(`boxes-setup-btn-${slot}`).addEventListener('click', async () => {
+    const accountId = accountAtSlot(slot)?.id;
+    if (!accountId) return;
+    if (!confirm(`Split your ${accountName(accountId)} balance into its boxes as shown?`)) return;
+    try {
+      await api('/api/buckets/setup', { method: 'POST', body: JSON.stringify({ account: accountId }) });
+      loadSection(() => refreshBoxes(accountId), `${accountName(accountId)} boxes`);
+    } catch (err) {
+      alert(err.message);
+    }
+  });
+}
 
-function renderBoxPie() {
-  const canvas = document.getElementById('box-pie-chart');
-  if (state.boxPieChart) state.boxPieChart.destroy();
-  state.boxPieChart = null;
+function renderBoxPie(accountId) {
+  const slot = accountSlot(accountId);
+  const canvas = document.getElementById(`box-pie-chart-${slot}`);
+  if (state.boxPieCharts[accountId]) state.boxPieCharts[accountId].destroy();
+  state.boxPieCharts[accountId] = null;
 
   // Buffer usage isn't extra spending - it covers a grocery/lunch/transport
   // overspend already counted in those boxes - so it's left out here.
-  const values = state.boxPieMode === 'spent'
-    ? state.boxes.filter((b) => b.key !== 'buffer').map((b) => ({ b, v: state.boxSpent[b.key] || 0 }))
-    : state.boxes.map((b) => ({ b, v: b.balance }));
+  const values = state.boxPieMode[accountId] === 'spent'
+    ? boxesFor(accountId).filter((b) => b.key !== 'buffer').map((b) => ({ b, v: state.boxSpentByAccount[accountId][b.key] || 0 }))
+    : boxesFor(accountId).map((b) => ({ b, v: b.balance }));
   const slices = values.filter((x) => x.v > 0); // negative boxes can't be a pie slice
 
   canvas.parentElement.hidden = !slices.length;
-  document.getElementById('box-pie-empty').hidden = slices.length > 0;
+  document.getElementById(`box-pie-empty-${slot}`).hidden = slices.length > 0;
   if (!slices.length) return;
 
-  state.boxPieChart = new Chart(canvas, {
+  state.boxPieCharts[accountId] = new Chart(canvas, {
     type: 'pie',
     data: {
       labels: slices.map((x) => x.b.name),
-      datasets: [{ data: slices.map((x) => x.v), backgroundColor: slices.map((x) => boxColor(x.b.key)) }],
+      datasets: [{ data: slices.map((x) => x.v), backgroundColor: slices.map((x) => boxColor(x.b.key, accountId)) }],
     },
     options: {
       maintainAspectRatio: false,
@@ -711,33 +818,42 @@ function renderBoxPie() {
   });
 }
 
-function setBoxPieMode(mode) {
-  state.boxPieMode = mode;
-  document.getElementById('box-pie-balances').classList.toggle('active', mode === 'balances');
-  document.getElementById('box-pie-spent').classList.toggle('active', mode === 'spent');
-  renderBoxPie();
+function setBoxPieMode(accountId, mode) {
+  const slot = accountSlot(accountId);
+  state.boxPieMode[accountId] = mode;
+  document.getElementById(`box-pie-balances-${slot}`).classList.toggle('active', mode === 'balances');
+  document.getElementById(`box-pie-spent-${slot}`).classList.toggle('active', mode === 'spent');
+  renderBoxPie(accountId);
 }
 
-document.getElementById('box-pie-balances').addEventListener('click', () => setBoxPieMode('balances'));
-document.getElementById('box-pie-spent').addEventListener('click', () => setBoxPieMode('spent'));
+for (const slot of [1, 2]) {
+  document.getElementById(`box-pie-balances-${slot}`).addEventListener('click', () => {
+    const accountId = accountAtSlot(slot)?.id;
+    if (accountId) setBoxPieMode(accountId, 'balances');
+  });
+  document.getElementById(`box-pie-spent-${slot}`).addEventListener('click', () => {
+    const accountId = accountAtSlot(slot)?.id;
+    if (accountId) setBoxPieMode(accountId, 'spent');
+  });
+}
 
 function moveReasonLabel(reason) {
   return {
-    setup: 'Starting split', income: 'Money in', salary: 'Salary', refund: 'Refund', spend: 'Spent', close: 'Month end (salary)', sweep: 'Money not in a box', transfer: 'Moved by you',
+    setup: 'Starting split', income: 'Money in', salary: 'Salary', refund: 'Refund', spend: 'Spent', close: 'Month end (salary)', sweep: 'Money not in a box', transfer: 'Moved by you', account_transfer: 'Between bank accounts',
   }[reason] || reason;
 }
 
-async function refreshBoxHistory() {
-  const moves = await api('/api/buckets/moves');
-  const list = document.getElementById('box-history-list');
+async function refreshBoxHistory(accountId) {
+  const moves = await api(`/api/buckets/moves?account=${accountId}`);
+  const list = document.getElementById(`box-history-list-${accountSlot(accountId)}`);
   list.innerHTML = moves.length ? '' : '<li><span class="ledger-meta">No box moves yet.</span></li>';
   for (const m of moves) {
     const route = m.from_bucket && m.to_bucket
-      ? `${boxName(m.from_bucket)} → ${boxName(m.to_bucket)}`
-      : m.to_bucket ? `+ ${boxName(m.to_bucket)}` : `− ${boxName(m.from_bucket)}`;
+      ? `${accountName(m.from_account)} ${boxName(m.from_bucket, m.from_account)} → ${accountName(m.to_account)} ${boxName(m.to_bucket, m.to_account)}`
+      : m.to_bucket ? `+ ${boxName(m.to_bucket, m.to_account)}` : `− ${boxName(m.from_bucket, m.from_account)}`;
     const li = document.createElement('li');
     li.innerHTML = `
-      <span><strong>${escapeHtml(route)}</strong><span class="ledger-meta">${m.move_date} · ${escapeHtml(moveReasonLabel(m.reason))}</span></span>
+      <span><strong>${escapeHtml(route)}</strong><span class="ledger-meta">${m.move_date} · ${escapeHtml(moveReasonLabel(m.reason))}${m.fee_amount > 0 ? ` · fee ${fmt(m.fee_amount)}` : ''}</span></span>
       <span>${fmt(m.amount)}</span>`;
     list.appendChild(li);
   }
@@ -958,7 +1074,7 @@ async function refreshCreditCard() {
   document.getElementById('cc-list').innerHTML = cc.entries.map((e) => `
     <li>
       <span><strong>${escapeHtml(e.category)}</strong>
-        <span class="ledger-meta">${e.entry_date}${e.bucket ? ' · ' + escapeHtml(boxName(e.bucket)) + ' box' : ''}${e.note ? ' · ' + escapeHtml(e.note) : ''}</span></span>
+        <span class="ledger-meta">${e.entry_date}${e.bucket ? ' · ' + escapeHtml(boxName(e.bucket, e.bank_account)) + ' box' : ''} · ${escapeHtml(accountName(e.bank_account))}${e.note ? ' · ' + escapeHtml(e.note) : ''}</span></span>
       <span>${fmt(e.amount)}</span>
     </li>`).join('');
 }
@@ -978,6 +1094,10 @@ async function refreshMonthly() {
   document.getElementById('eb-total').textContent = fmt(summary.expense);
   document.getElementById('eb-credit').textContent = fmt(summary.expenseByMethod.credit);
   document.getElementById('eb-debit').textContent = `-${fmt(summary.expenseByMethod.debit)}`;
+  for (const slot of [1, 2]) {
+    const account = accountAtSlot(slot);
+    if (account) document.getElementById(`month-spent-${slot}`).textContent = fmt(summary.expenseByAccount[account.id] || 0);
+  }
 
   document.getElementById('invested-month').textContent = fmt(summary.investedThisMonth);
 
@@ -998,6 +1118,7 @@ async function refreshMonthly() {
   renderBudgets(summary.budgetStatus);
   state.pieChart = renderPieChart('pie-chart', state.pieChart, summary.byCategory);
   state.categoryBarChart = renderCategoryBarChart('category-bar-chart', state.categoryBarChart, summary.byCategory);
+  state.accountSpendChart = renderAccountSpendChart('month-account-chart', state.accountSpendChart, summary.expenseByAccount);
 }
 
 function renderBudgets(budgetStatus) {
@@ -1085,6 +1206,30 @@ function renderCategoryBarChart(canvasId, previous, byCategory) {
   });
 }
 
+function renderAccountSpendChart(canvasId, previous, byAccount) {
+  const canvas = document.getElementById(canvasId);
+  if (previous) previous.destroy();
+  const accounts = accountIds().filter((id) => Number(byAccount[id]) > 0);
+  if (!accounts.length) return null;
+  return new Chart(canvas, {
+    type: 'doughnut',
+    data: {
+      labels: accounts.map(accountName),
+      datasets: [{
+        data: accounts.map((id) => byAccount[id]),
+        backgroundColor: accounts.map((id) => accountSlot(id) === 1 ? '#d55e00' : '#56b4e9'),
+      }],
+    },
+    options: {
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { color: '#e8eaed', boxWidth: 12, font: { size: 11 } } },
+        tooltip: { callbacks: { label: (item) => `${item.label}: ${fmt(item.raw)} AED` } },
+      },
+    },
+  });
+}
+
 async function refreshYearly() {
   const summary = await api(`/api/summary/yearly?year=${state.year}`);
 
@@ -1097,11 +1242,16 @@ async function refreshYearly() {
   document.getElementById('year-eb-total').textContent = fmt(summary.expense);
   document.getElementById('year-eb-credit').textContent = fmt(summary.expenseByMethod.credit);
   document.getElementById('year-eb-debit').textContent = `-${fmt(summary.expenseByMethod.debit)}`;
+  for (const slot of [1, 2]) {
+    const account = accountAtSlot(slot);
+    if (account) document.getElementById(`year-spent-${slot}`).textContent = fmt(summary.expenseByAccount[account.id] || 0);
+  }
 
   document.getElementById('invested-year-tab').textContent = fmt(summary.investedThisYear);
 
   state.yearlyPieChart = renderPieChart('yearly-pie-chart', state.yearlyPieChart, summary.byCategory);
   state.yearlyCategoryBarChart = renderCategoryBarChart('yearly-category-bar-chart', state.yearlyCategoryBarChart, summary.byCategory);
+  state.yearlyAccountSpendChart = renderAccountSpendChart('year-account-chart', state.yearlyAccountSpendChart, summary.expenseByAccount);
 }
 
 // ---------- ledger ----------
@@ -1124,7 +1274,7 @@ async function refreshLedger() {
     li.innerHTML = `
       <span>
         <strong>${escapeHtml(e.category)}</strong>
-        <span class="ledger-meta">${e.entry_date}${e.classification ? ' · ' + e.classification : ''}${e.payment_method ? ' · ' + e.payment_method : ''}${e.purse_id ? ' · bus card top-up' : ''}</span>
+        <span class="ledger-meta">${e.entry_date}${e.classification ? ' · ' + e.classification : ''}${e.payment_method ? ' · ' + e.payment_method : ''} · ${escapeHtml(accountName(e.bank_account))}${e.purse_id ? ' · bus card top-up' : ''}</span>
       </span>
       <span>
         <span class="ledger-amount ${e.type}">${e.type === 'income' ? '+' : '-'}${fmt(e.amount)}</span>
@@ -1138,7 +1288,7 @@ async function refreshLedger() {
       refreshLedger();
       refreshMonthly();
       refreshBalances();
-      loadSection(refreshBoxes, 'boxes');
+      accountIds().forEach((account) => loadSection(() => refreshBoxes(account), `${accountName(account)} boxes`));
       loadSection(refreshCreditCard, 'credit card');
       loadSection(refreshPurses, 'bus cards');
       if (state.view === 'yearly') loadSection(refreshYearly, 'yearly summary');
@@ -1203,6 +1353,7 @@ function updatePaymentMethodOptions() {
   const select = document.getElementById('confirm-payment-method');
   const methods = isExpense ? EXPENSE_METHODS : INCOME_METHODS;
   select.innerHTML = methods.map((m) => `<option value="${m.value}">${m.label}</option>`).join('');
+  updateCreditAccountChoice();
 }
 
 document.getElementById('confirm-type').addEventListener('change', () => {
@@ -1211,6 +1362,29 @@ document.getElementById('confirm-type').addEventListener('change', () => {
   updatePurseOptions(document.getElementById('confirm-purse').value);
 });
 
+document.getElementById('confirm-bank-account').addEventListener('change', () => {
+  state.activeAccount = document.getElementById('confirm-bank-account').value;
+  updateBucketOptions(undefined);
+  updatePurseHint();
+});
+
+document.getElementById('confirm-payment-method').addEventListener('change', () => {
+  const previousAccount = state.activeAccount;
+  updateCreditAccountChoice();
+  if (state.activeAccount !== previousAccount) updateBucketOptions(undefined);
+});
+
+function updateCreditAccountChoice() {
+  const method = document.getElementById('confirm-payment-method').value;
+  const isCashOrCurrentCard = method === 'cash' || method === 'credit';
+  const accountSelect = document.getElementById('confirm-bank-account');
+  if (isCashOrCurrentCard) {
+    accountSelect.value = primaryAccountId();
+    state.activeAccount = primaryAccountId();
+  }
+  accountSelect.disabled = isCashOrCurrentCard;
+}
+
 // Box picker in the confirm modal. The parser's pick is pre-selected and the
 // hint asks the user to OK it or change it; income defaults to a % split.
 function updateBucketOptions(selected) {
@@ -1218,7 +1392,7 @@ function updateBucketOptions(selected) {
   const select = document.getElementById('confirm-bucket');
   const options = [];
   if (!isExpense) options.push({ value: 'split', label: 'All boxes (split by %)' });
-  for (const b of state.boxes) {
+  for (const b of boxesFor(state.activeAccount)) {
     if (b.key !== 'buffer') options.push({ value: b.key, label: `${b.name} (${fmt(b.balance)})` });
   }
   options.push({ value: '', label: "Don't touch any box" });
@@ -1259,12 +1433,13 @@ async function updateBucketHint() {
     const newMonth = document.getElementById('confirm-new-month').checked;
     const params = new URLSearchParams({ amount, category: categorySelect.value, new_month: newMonth ? '1' : '0' });
     try {
+      params.set('account', state.activeAccount);
       const { closeMoves, shares } = await api(`/api/buckets/split-preview?${params}`);
       const splitText = Object.entries(shares)
-        .map(([key, v]) => `${escapeHtml(boxName(key))} <strong>${fmt(v)}</strong>`)
+        .map(([key, v]) => `${escapeHtml(boxName(key, state.activeAccount))} <strong>${fmt(v)}</strong>`)
         .join(' · ');
       const closeText = closeMoves.length
-        ? closeMoves.map((m) => `${escapeHtml(boxName(m.from))} → ${escapeHtml(boxName(m.to))} <strong>${fmt(m.amount)}</strong>`).join(' · ')
+        ? closeMoves.map((m) => `${escapeHtml(boxName(m.from, state.activeAccount))} → ${escapeHtml(boxName(m.to, state.activeAccount))} <strong>${fmt(m.amount)}</strong>`).join(' · ')
         : 'nothing to move';
       hint.innerHTML = (newMonth ? `<div>Month-end first: ${closeText}</div>` : '')
         + `<div>${newMonth ? 'Then split' : 'Will be split'}: ${splitText}</div>`;
@@ -1274,7 +1449,7 @@ async function updateBucketHint() {
     return;
   }
 
-  const box = state.boxes.find((b) => b.key === value);
+  const box = boxesFor(state.activeAccount).find((b) => b.key === value);
   if (!box) return;
   const picked = value === state.suggestedBucket ? 'I picked' : 'You picked';
   if (!isExpense) {
@@ -1285,9 +1460,10 @@ async function updateBucketHint() {
     }
     try {
       const params = new URLSearchParams({ amount, category: categorySelect.value, new_month: '1' });
+      params.set('account', state.activeAccount);
       const { closeMoves } = await api(`/api/buckets/split-preview?${params}`);
       const closeText = closeMoves.length
-        ? closeMoves.map((m) => `${escapeHtml(boxName(m.from))} → ${escapeHtml(boxName(m.to))} <strong>${fmt(m.amount)}</strong>`).join(' · ')
+        ? closeMoves.map((m) => `${escapeHtml(boxName(m.from, state.activeAccount))} → ${escapeHtml(boxName(m.to, state.activeAccount))} <strong>${fmt(m.amount)}</strong>`).join(' · ')
         : 'nothing to move';
       hint.innerHTML = `<div>Month-end first: ${closeText}</div><div>Then: ${intoBox}</div>`;
     } catch (err) {
@@ -1310,12 +1486,16 @@ categorySelect.addEventListener('change', resetNewMonth);
 
 function openConfirmModal(suggestion, raw_input) {
   state.pendingSuggestion = { ...suggestion, raw_input };
+  const accountId = suggestion.bank_account || (suggestion.category === 'Salary' ? salaryAccountId() : state.activeAccount);
+  document.getElementById('confirm-bank-account').value = accountId;
+  state.activeAccount = accountId;
   document.getElementById('confirm-type').value = suggestion.type || 'expense';
   document.getElementById('confirm-amount').value = suggestion.amount ?? '';
   categorySelect.value = CATEGORIES.includes(suggestion.category) ? suggestion.category : 'Other';
   document.getElementById('confirm-classification').value = suggestion.classification || '';
   updatePaymentMethodOptions();
   document.getElementById('confirm-payment-method').value = suggestion.payment_method || (suggestion.type === 'expense' ? 'debit' : '');
+  updateCreditAccountChoice();
   document.getElementById('confirm-date').value = suggestion.date || todayISO();
   document.getElementById('confirm-note').value = suggestion.note || '';
   updateBucketOptions(suggestion.bucket);
@@ -1336,6 +1516,7 @@ document.getElementById('confirm-save').addEventListener('click', async () => {
     category: document.getElementById('confirm-category').value.trim(),
     classification: document.getElementById('confirm-classification').value || null,
     payment_method: document.getElementById('confirm-payment-method').value || null,
+    bank_account: document.getElementById('confirm-bank-account').value,
     entry_date: document.getElementById('confirm-date').value,
     note: document.getElementById('confirm-note').value.trim(),
     raw_input: state.pendingSuggestion?.raw_input || null,
@@ -1362,7 +1543,7 @@ document.getElementById('confirm-save').addEventListener('click', async () => {
     else if (saved?.bucket_warning) alert(`Saved, but the boxes weren't updated: ${saved.bucket_warning}`);
 
     refreshBalances();
-    loadSection(refreshBoxes, 'boxes');
+    accountIds().forEach((account) => loadSection(() => refreshBoxes(account), `${accountName(account)} boxes`));
     loadSection(refreshCreditCard, 'credit card');
     if (payload.purse_id) loadSection(refreshPurses, 'bus cards');
     const entryMonth = Number(payload.entry_date.slice(5, 7));
@@ -1593,16 +1774,17 @@ function xlSection(ws, at, title, headers, rows, formats = [], { total } = {}) {
 }
 
 function buildMonthWorkbook(ExcelJS, data) {
-  const { year, month, cycle, from, to, inProgress, entries, boxMoves, buckets, settings, purses, purseMoves } = data;
+  const { year, month, cycle, from, to, inProgress, entries, boxMoves, buckets, settings, bankAccounts, purses, purseMoves } = data;
   const periodName = cycle === 'salary'
     ? `Salary month ${niceDate(from)} – ${niceDate(to)}`
     : `${MONTH_NAMES[month - 1]} ${year}`;
   const periodNote = `${niceDate(from)} to ${niceDate(to)}${inProgress ? ' · still in progress (everything so far)' : ''} · made ${new Date().toLocaleString('en-GB')}`;
   const days = datesBetween(from, to);
-  const boxNames = Object.fromEntries(buckets.map((b) => [b.key, b.name]));
+  const boxNames = Object.fromEntries(buckets.map((b) => [`${b.account_id}:${b.key}`, b.name]));
+  const boxLabelFor = (accountId, key) => `${accountName(accountId)} · ${boxNames[`${accountId}:${key}`] || key}`;
   const cardNames = Object.fromEntries(purses.map((p) => [p.id, p.name]));
   const entryById = Object.fromEntries(entries.map((e) => [e.id, e]));
-  const boxLabel = (e) => (e.bucket === 'split' ? 'All boxes (split)' : e.bucket ? boxNames[e.bucket] || e.bucket : '');
+  const boxLabel = (e) => (e.bucket === 'split' ? `All ${accountName(e.bank_account)} boxes (split)` : e.bucket ? boxLabelFor(e.bank_account, e.bucket) : '');
   const amt = (e) => Number(e.amount);
   const sum = (list, f = amt) => list.reduce((s, x) => s + f(x), 0);
 
@@ -1647,20 +1829,34 @@ function buildMonthWorkbook(ExcelJS, data) {
   }
 
   const byCat = {};
+  const byBankAccount = Object.fromEntries(accountIds().map((id) => [id, 0]));
   for (const e of spending) {
     byCat[e.category] ||= { count: 0, total: 0 };
     byCat[e.category].count += 1;
     byCat[e.category].total += amt(e);
+    if (byBankAccount[e.bank_account] !== undefined) byBankAccount[e.bank_account] += amt(e);
   }
   const catOrder = Object.entries(byCat).sort((a, b) => b[1].total - a[1].total);
   at = xlSection(ws, at, 'Where the money went (by category)', ['Category', 'Spent', 'Share', 'Times'],
     catOrder.map(([c, v]) => [c, v.total, moneyOut ? v.total / moneyOut : 0, v.count]),
     [null, XL_MONEY, XL_PCT, '0'], { total: [2, 3, 4] });
 
+  at = xlSection(ws, at, 'Spent from each bank account', ['Account', 'Spent', 'Share'],
+    accountIds().map((id) => [accountName(id), byBankAccount[id], moneyOut ? byBankAccount[id] / moneyOut : 0]),
+    [null, XL_MONEY, XL_PCT], { total: [2, 3] });
+
   const byBox = {};
-  for (const e of spending) if (e.bucket) byBox[e.bucket] = (byBox[e.bucket] || 0) + amt(e);
+  for (const e of spending) {
+    if (e.bucket) {
+      const key = `${e.bank_account}:${e.bucket}`;
+      byBox[key] = (byBox[key] || 0) + amt(e);
+    }
+  }
   at = xlSection(ws, at, 'Spent from each box', ['Box', 'Spent', 'Share'],
-    Object.entries(byBox).sort((a, b) => b[1] - a[1]).map(([k, v]) => [boxNames[k] || k, v, moneyOut ? v / moneyOut : 0]),
+    Object.entries(byBox).sort((a, b) => b[1] - a[1]).map(([k, v]) => {
+      const [accountId, key] = k.split(':');
+      return [boxLabelFor(accountId, key), v, moneyOut ? v / moneyOut : 0];
+    }),
     [null, XL_MONEY, XL_PCT], { total: [2] });
 
   const classes = { need: 'Needs', want: 'Wants', luxury: 'Luxury', investment: 'Investing' };
@@ -1685,7 +1881,7 @@ function buildMonthWorkbook(ExcelJS, data) {
 
   const boxesTotal = sum(buckets, (b) => Number(b.balance));
   at = xlSection(ws, at, 'Balances right now', ['', 'AED'], [
-    ['Bank', Number(settings.bank_balance)],
+    ...(bankAccounts || []).map((a) => [a.name, Number(a.balance)]),
     ['Cash on hand', Number(settings.cash_balance)],
     ['Owed on credit card', Number(settings.credit_outstanding)],
     ['In all boxes', boxesTotal],
@@ -1699,7 +1895,7 @@ function buildMonthWorkbook(ExcelJS, data) {
   const st = wb.addWorksheet('Statement', { views: [{ state: 'frozen', ySplit: 4 }] });
   const stCols = [
     ['Date', 16], ['Description (your note)', 42], ['Money in', 12], ['Money out', 12], ['Net so far', 13],
-    ['Category', 17], ['Box', 22], ['Paid with', 13], ['Need / want', 11], ['Bus card', 15], ['What you typed', 40],
+    ['Category', 17], ['Box', 22], ['Bank account', 14], ['Paid with', 13], ['Need / want', 11], ['Bus card', 15], ['What you typed', 40],
   ];
   st.columns = stCols.map(([, width]) => ({ width }));
   xlTitle(st, `Statement - ${periodName}`, periodNote, stCols.length);
@@ -1719,6 +1915,7 @@ function buildMonthWorkbook(ExcelJS, data) {
       { formula: i === 0 ? `C${r}-D${r}` : `E${r - 1}+C${r}-D${r}`, result: net },
       isCardBill(e) ? 'Card bill' : e.category,
       boxLabel(e),
+      accountName(e.bank_account),
       paidWithLabel(e),
       e.classification || '',
       e.purse_id ? `Top up ${cardNames[e.purse_id] || ''}`.trim() : '',
@@ -1730,7 +1927,7 @@ function buildMonthWorkbook(ExcelJS, data) {
     row.getCell(3).font = { color: { argb: XL.green } };
     row.getCell(4).font = { color: { argb: XL.red } };
     row.getCell(2).alignment = { wrapText: true, vertical: 'top' };
-    row.getCell(11).alignment = { wrapText: true, vertical: 'top' };
+    row.getCell(12).alignment = { wrapText: true, vertical: 'top' };
     xlZebra(row, i);
   });
   const stLast = 4 + entries.length;
@@ -1828,10 +2025,10 @@ function buildMonthWorkbook(ExcelJS, data) {
   ];
   xlHeader(bx.getRow(1));
   buckets.forEach((b, i) => {
-    const inMoves = boxMoves.filter((m) => m.to_bucket === b.key);
-    const outMoves = boxMoves.filter((m) => m.from_bucket === b.key);
+    const inMoves = boxMoves.filter((m) => m.to_account === b.account_id && m.to_bucket === b.key);
+    const outMoves = boxMoves.filter((m) => m.from_account === b.account_id && m.from_bucket === b.key);
     const row = bx.addRow([
-      b.name, Number(b.balance), sum(inMoves), sum(outMoves),
+      `${accountName(b.account_id)} · ${b.name}`, Number(b.balance), sum(inMoves), sum(outMoves),
       sum(outMoves.filter((m) => m.reason === 'spend')), b.cap == null ? null : Number(b.cap),
     ]);
     [2, 3, 4, 5, 6].forEach((c) => { row.getCell(c).numFmt = XL_MONEY; });
@@ -1853,8 +2050,8 @@ function buildMonthWorkbook(ExcelJS, data) {
     const row = bx.getRow(bRow + 1 + i);
     row.values = [
       xlDate(m.move_date),
-      m.from_bucket ? boxNames[m.from_bucket] || m.from_bucket : '(money in)',
-      m.to_bucket ? boxNames[m.to_bucket] || m.to_bucket : '(spent)',
+      m.from_bucket ? boxLabelFor(m.from_account, m.from_bucket) : '(money in)',
+      m.to_bucket ? boxLabelFor(m.to_account, m.to_bucket) : '(spent)',
       Number(m.amount),
       moveReasonLabel(m.reason),
       e ? describeEntry(e) : '',
@@ -1906,11 +2103,11 @@ function escapeHtml(str) {
 
 // ---------- boot ----------
 
-function initApp() {
+async function initApp() {
   populateSelectors();
   loadSection(refreshReminders, 'reminders');
-  loadSection(refreshBalances, 'balances');
-  loadSection(refreshBoxes, 'boxes');
+  await loadSection(refreshBalances, 'balances');
+  accountIds().forEach((account) => loadSection(() => refreshBoxes(account), `${accountName(account)} boxes`));
   loadSection(refreshCreditCard, 'credit card');
   loadSection(refreshPurses, 'bus cards');
   loadSection(refreshMonthly, 'monthly summary');

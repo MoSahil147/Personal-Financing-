@@ -1,6 +1,6 @@
 const express = require('express');
 const supabase = require('../services/supabase');
-const { getSettings, withdrawCash, depositCash } = require('../services/balances');
+const { getSettings, getAccountIdBySort, withdrawCash, depositCash } = require('../services/balances');
 const { todayISO } = require('../services/date');
 const { round3 } = require('../services/bucketMath');
 
@@ -29,6 +29,40 @@ router.put('/bank-balance', async (req, res) => {
     .single();
 
   if (error) return res.status(500).json({ error: error.message });
+  let primaryAccountId;
+  try {
+    primaryAccountId = await getAccountIdBySort(1);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+  const { error: accountError } = await supabase.from('bank_accounts')
+    .update({ balance: round3(bank_balance) }).eq('id', primaryAccountId);
+  if (accountError) return res.status(500).json({ error: accountError.message });
+  res.json(data);
+});
+
+router.put('/account-balance/:id', async (req, res) => {
+  const { id } = req.params;
+  const balance = Number(req.body?.balance);
+  let accounts;
+  try {
+    accounts = (await getSettings()).bank_accounts;
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+  if (!accounts.some((account) => account.id === id)) return res.status(404).json({ error: 'Bank account not found' });
+  if (!Number.isFinite(balance) || balance < 0) {
+    return res.status(400).json({ error: 'balance must be 0 or more' });
+  }
+  const rounded = round3(balance);
+  const { data, error } = await supabase.from('bank_accounts')
+    .update({ balance: rounded }).eq('id', id).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  if (accounts.find((account) => account.id === id)?.sort === 1) {
+    const { error: mirrorError } = await supabase.from('settings')
+      .update({ bank_balance: rounded }).eq('id', 'main');
+    if (mirrorError) return res.status(500).json({ error: mirrorError.message });
+  }
   res.json(data);
 });
 
@@ -79,7 +113,7 @@ router.get('/credit-card', async (_req, res) => {
 
     const { data, error } = await supabase
       .from('entries')
-      .select('id, entry_date, amount, category, bucket, note')
+      .select('id, entry_date, amount, category, bucket, bank_account, note')
       .eq('type', 'expense')
       .eq('payment_method', 'credit')
       .order('entry_date', { ascending: false })
@@ -115,9 +149,12 @@ router.post('/withdraw-cash', async (req, res) => {
   const { amount } = req.body || {};
   const n = Number(amount);
   if (!n || n <= 0) return res.status(400).json({ error: 'amount must be a positive number' });
-
   try {
-    const data = await withdrawCash(n);
+    const accountId = req.body?.bank_account || await getAccountIdBySort(1);
+    if (!(await getSettings()).bank_accounts.some((account) => account.id === accountId)) {
+      return res.status(400).json({ error: 'Choose a valid bank account' });
+    }
+    const data = await withdrawCash(n, accountId);
     res.json(data);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -130,7 +167,11 @@ router.post('/deposit-cash', async (req, res) => {
   const n = Number(req.body?.amount);
   if (!n || n <= 0) return res.status(400).json({ error: 'amount must be a positive number' });
   try {
-    res.json(await depositCash(n));
+    const accountId = req.body?.bank_account || await getAccountIdBySort(1);
+    if (!(await getSettings()).bank_accounts.some((account) => account.id === accountId)) {
+      return res.status(400).json({ error: 'Choose a valid bank account' });
+    }
+    res.json(await depositCash(n, accountId));
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -159,6 +200,8 @@ router.put('/savings-target', async (req, res) => {
 router.post('/settle-credit-card', async (req, res) => {
   try {
     const settings = await getSettings();
+    const accountId = req.body?.bank_account || settings.bank_accounts[0]?.id;
+    if (!settings.bank_accounts.some((account) => account.id === accountId)) return res.status(400).json({ error: 'Choose a valid bank account' });
     const amount = Number(settings.credit_outstanding);
     if (amount <= 0) return res.status(400).json({ error: 'Nothing owed on credit card' });
 
@@ -171,20 +214,21 @@ router.post('/settle-credit-card', async (req, res) => {
       category: 'Credit Card Payment',
       classification: null,
       payment_method: 'debit',
+      bank_account: accountId,
       note: 'Monthly credit card settlement',
     });
     if (insertErr) throw new Error(insertErr.message);
 
-    const { data, error: updateErr } = await supabase
-      .from('settings')
-      .update({
-        bank_balance: round3(Number(settings.bank_balance) - amount),
-        credit_outstanding: 0,
-      })
-      .eq('id', 'main')
-      .select()
-      .single();
+    const account = settings.bank_accounts.find((a) => a.id === accountId);
+    if (!account) throw new Error(`Unknown bank account: ${accountId}`);
+    const { data, error: updateErr } = await supabase.from('bank_accounts')
+      .update({ balance: round3(Number(account.balance) - amount) })
+      .eq('id', accountId).select().single();
     if (updateErr) throw new Error(updateErr.message);
+    const { error: settingsErr } = await supabase.from('settings')
+      .update({ credit_outstanding: 0, ...(account.sort === 1 ? { bank_balance: round3(Number(account.balance) - amount) } : {}) })
+      .eq('id', 'main')
+    if (settingsErr) throw new Error(settingsErr.message);
 
     res.json(data);
   } catch (err) {

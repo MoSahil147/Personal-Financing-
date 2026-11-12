@@ -28,10 +28,29 @@ router.post('/', async (req, res) => {
   if (!['income', 'expense'].includes(type)) {
     return res.status(400).json({ error: 'type must be income or expense' });
   }
+  let settings;
+  try {
+    settings = await getSettings();
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+  const accounts = settings.bank_accounts || [];
+  const primaryAccount = accounts.find((account) => account.sort === 1)?.id;
+  const salaryAccount = accounts.find((account) => account.sort === 2)?.id || primaryAccount;
+  const bankAccount = req.body?.bank_account || (category === 'Salary' ? salaryAccount : primaryAccount);
+  if (!accounts.some((account) => account.id === bankAccount)) {
+    return res.status(400).json({ error: 'Choose a valid bank account' });
+  }
   const method = isCardPayment ? 'debit'
     : payment_method === 'cash' ? 'cash' : type === 'expense' ? payment_method || 'debit' : null;
   if (type === 'expense' && !['debit', 'credit', 'cash'].includes(method)) {
     return res.status(400).json({ error: 'payment_method must be debit, credit, or cash' });
+  }
+  if (type === 'expense' && method === 'credit' && bankAccount !== primaryAccount) {
+    return res.status(400).json({ error: 'The current credit card is linked to the primary account' });
+  }
+  if (method === 'cash' && bankAccount !== primaryAccount) {
+    return res.status(400).json({ error: 'Cash is tracked with the primary account boxes' });
   }
   if (type === 'income' && method !== null && method !== 'cash') {
     return res.status(400).json({ error: 'income payment_method must be cash or omitted (bank)' });
@@ -61,6 +80,7 @@ router.post('/', async (req, res) => {
       category,
       classification: classification || null,
       payment_method: method,
+      bank_account: bankAccount,
       note,
       raw_input,
       bucket,

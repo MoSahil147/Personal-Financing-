@@ -30,11 +30,13 @@ router.get('/monthly', async (req, res) => {
   const expense = entries.filter((e) => e.type === 'expense').reduce((s, e) => s + Number(e.amount), 0);
 
   const byCategory = {};
+  const expenseByAccount = {};
   const byClassification = { need: 0, want: 0, luxury: 0 };
   const expenseByMethod = { debit: 0, credit: 0 };
   let investedThisMonth = 0;
   for (const e of entries.filter((e) => e.type === 'expense')) {
     byCategory[e.category] = (byCategory[e.category] || 0) + Number(e.amount);
+    expenseByAccount[e.bank_account] = (expenseByAccount[e.bank_account] || 0) + Number(e.amount);
     if (e.classification && byClassification[e.classification] !== undefined) {
       byClassification[e.classification] += Number(e.amount);
     }
@@ -113,6 +115,7 @@ router.get('/monthly', async (req, res) => {
     income,
     expense,
     expenseByMethod,
+    expenseByAccount,
     savings,
     savingsTarget,
     savingsPercent,
@@ -139,6 +142,7 @@ router.get('/yearly', async (req, res) => {
 
   const months = Array.from({ length: 12 }, (_, i) => ({ month: i + 1, income: 0, expense: 0, invested: 0 }));
   const byCategory = {};
+  const expenseByAccount = {};
   const expenseByMethod = { debit: 0, credit: 0 };
   let investedThisYear = 0;
   let income = 0;
@@ -154,6 +158,7 @@ router.get('/yearly', async (req, res) => {
       months[m].expense += amount;
       expense += amount;
       byCategory[e.category] = (byCategory[e.category] || 0) + amount;
+      expenseByAccount[e.bank_account] = (expenseByAccount[e.bank_account] || 0) + amount;
       expenseByMethod[e.payment_method === 'credit' ? 'credit' : 'debit'] += amount;
       if (e.classification === 'investment') {
         months[m].invested += amount;
@@ -169,6 +174,7 @@ router.get('/yearly', async (req, res) => {
     expense,
     savings: income - expense,
     expenseByMethod,
+    expenseByAccount,
     months: withSavings,
     investedThisYear,
     byCategory: Object.entries(byCategory).map(([category, total]) => ({ category, total })),
@@ -195,16 +201,17 @@ router.get('/export', async (req, res) => {
   if (range.error) return res.status(400).json({ error: range.error });
   const after = addDays(range.to, 1);
 
-  const [entries, boxMoves, buckets, settings, purses, purseMoves] = await Promise.all([
+  const [entries, boxMoves, buckets, settings, purses, purseMoves, bankAccounts] = await Promise.all([
     supabase.from('entries').select('*').gte('entry_date', range.from).lt('entry_date', after)
       .order('entry_date').order('created_at'),
-    supabase.from('bucket_moves').select('*').gte('move_date', range.from).lt('move_date', after).order('created_at'),
-    supabase.from('buckets').select('*').order('sort'),
+    supabase.from('account_bucket_moves').select('*').gte('move_date', range.from).lt('move_date', after).order('created_at'),
+    supabase.from('account_buckets').select('*').order('account_id').order('sort'),
     supabase.from('settings').select('*').eq('id', 'main').single(),
     supabase.from('purses').select('*').order('sort').order('name'),
     supabase.from('purse_moves').select('*').gte('move_date', range.from).lt('move_date', after).order('created_at'),
+    supabase.from('bank_accounts').select('*').order('sort'),
   ]);
-  const failed = [entries, boxMoves, buckets, settings].find((r) => r.error);
+  const failed = [entries, boxMoves, buckets, settings, bankAccounts].find((r) => r.error);
   if (failed) return res.status(500).json({ error: failed.error.message });
 
   res.json({
@@ -214,7 +221,8 @@ router.get('/export', async (req, res) => {
     ...range,
     entries: entries.data,
     boxMoves: boxMoves.data,
-    buckets: buckets.data,
+    buckets: buckets.data.map((b) => ({ ...b, key: b.bucket_key })),
+    bankAccounts: bankAccounts.data,
     settings: settings.data,
     purses: purses.error ? [] : purses.data,
     purseMoves: purseMoves.error ? [] : purseMoves.data,
