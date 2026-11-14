@@ -214,7 +214,7 @@ router.get('/export', async (req, res) => {
   if (range.error) return res.status(400).json({ error: range.error });
   const after = addDays(range.to, 1);
 
-  const [entries, boxMoves, buckets, settings, purses, purseMoves, bankAccounts] = await Promise.all([
+  const [entries, boxMoves, buckets, settings, purses, purseMoves, bankAccounts, pockets] = await Promise.all([
     supabase.from('entries').select('*').gte('entry_date', range.from).lt('entry_date', after)
       .order('entry_date').order('created_at'),
     supabase.from('account_bucket_moves').select('*').gte('move_date', range.from).lt('move_date', after).order('created_at'),
@@ -223,6 +223,7 @@ router.get('/export', async (req, res) => {
     supabase.from('purses').select('*').order('sort').order('name'),
     supabase.from('purse_moves').select('*').gte('move_date', range.from).lt('move_date', after).order('created_at'),
     supabase.from('bank_accounts').select('*').order('sort'),
+    supabase.from('account_sub_buckets').select('*').order('account_id').order('parent_key').order('sort'),
   ]);
   const failed = [entries, boxMoves, buckets, settings, bankAccounts].find((r) => r.error);
   if (failed) return res.status(500).json({ error: failed.error.message });
@@ -239,6 +240,7 @@ router.get('/export', async (req, res) => {
     settings: settings.data,
     purses: purses.error ? [] : purses.data,
     purseMoves: purseMoves.error ? [] : purseMoves.data,
+    pockets: pockets.error ? [] : pockets.data,
   });
 });
 

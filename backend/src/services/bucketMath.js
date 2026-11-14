@@ -73,10 +73,72 @@ function suggestBucket({ type, category, bucket }) {
 // Where a box's money goes when it would go over its limit.
 const OVERFLOW_TO = { roaming: 'emergency', home_trips: 'emergency', emergency: 'investing', buffer: 'emergency' };
 
-// Guilt-free's limit is a carry-over limit: the new share is added on top and
-// only the extra above the limit moves at month-end (computeClose), so
-// incoming money never trims it.
+// Guilt-free starts fresh every month (computeClose), so a limit on it is
+// never used to trim incoming money.
 const LIMIT_AT_MONTH_END_ONLY = ['guilt_free'];
+
+// ----- Sub-boxes (pockets inside a box) -----
+// A box's `subs` list partitions its balance. Each pocket has a monthly `share`
+// (incoming money is split in proportion), an optional `cap`, `carries`
+// (false = starts fresh, its leftover goes to `leftover_to`), `is_default`
+// (used when no pocket is picked) and `takes_rest` (gets rounding pennies).
+
+function defaultSub(subs) {
+  return (subs.find((s) => s.is_default) || subs[0])?.sub_key || null;
+}
+
+// Splits money coming into a box across its pockets by their monthly shares.
+// Rounding pennies go to the takes_rest pocket so the parts add up exactly.
+function splitIntoSubs(amount, subs) {
+  const amt = round3(amount);
+  if (!subs?.length || amt === 0) return {};
+  const weight = subs.reduce((s, x) => s + Math.max(0, Number(x.share) || 0), 0);
+  const result = {};
+  if (weight > 0) {
+    for (const x of subs) {
+      const v = round3((amt * Math.max(0, Number(x.share) || 0)) / weight);
+      if (v !== 0) result[x.sub_key] = v;
+    }
+  }
+  const rest = round3(amt - total(result));
+  if (rest !== 0) {
+    const key = (subs.find((x) => x.takes_rest) || subs.find((x) => x.is_default) || subs[0]).sub_key;
+    result[key] = round3((result[key] || 0) + rest);
+  }
+  return result;
+}
+
+// Month-end for one box's pockets. Pockets that don't carry send their
+// leftover to `leftover_to` (an overspend is covered from it instead); then
+// any pocket over its cap gives up the extra, which leaves the box.
+// Returns the pocket-to-pocket moves, the money leaving the box, and the
+// pocket balances afterwards.
+function computeSubClose(subs) {
+  const bal = Object.fromEntries(subs.map((x) => [x.sub_key, Number(x.balance)]));
+  const internal = [];
+  const overflow = [];
+  const shift = (fromSub, toSub, amount) => {
+    const amt = round3(amount);
+    if (amt <= 0 || fromSub === toSub) return;
+    bal[fromSub] = round3(bal[fromSub] - amt);
+    bal[toSub] = round3(bal[toSub] + amt);
+    internal.push({ fromSub, toSub, amount: amt });
+  };
+  for (const x of subs) {
+    if (x.carries !== false || !x.leftover_to || !(x.leftover_to in bal)) continue;
+    if (bal[x.sub_key] > 0) shift(x.sub_key, x.leftover_to, bal[x.sub_key]);
+    else if (bal[x.sub_key] < 0) shift(x.leftover_to, x.sub_key, -bal[x.sub_key]);
+  }
+  for (const x of subs) {
+    if (x.cap == null) continue;
+    const extra = round3(bal[x.sub_key] - Number(x.cap));
+    if (extra > 0) {
+      bal[x.sub_key] = round3(bal[x.sub_key] - extra);
+      overflow.push({ fromSub: x.sub_key, amount: extra });
+    }
+  }
+  return { internal, overflow, balances: bal };
+}
 
 // Keeps every box at or under its limit as money comes in: whatever a box
 // has no room for moves down its overflow chain (ending in investing).
@@ -169,24 +231,34 @@ function computeClose(boxes) {
   const cap = (key) => (boxes[key].cap == null ? Infinity : Number(boxes[key].cap));
   const moves = [];
 
-  const move = (from, to, amount) => {
+  const move = (from, to, amount, extra = {}) => {
     const amt = round3(amount);
     if (amt <= 0) return;
     bal[from] = round3(bal[from] - amt);
     bal[to] = round3(bal[to] + amt);
-    moves.push({ from, to, amount: amt });
+    moves.push({ from, to, amount: amt, ...extra });
   };
 
   // Fills each box in `chain` up to its cap; the last one takes whatever's left.
-  const pour = (from, amount, chain) => {
+  const pour = (from, amount, chain, extra = {}) => {
     let left = round3(amount);
     chain.forEach((key, i) => {
       if (left <= 0) return;
       const room = i === chain.length - 1 ? left : Math.max(0, cap(key) - bal[key]);
       const x = Math.min(left, room);
-      move(from, key, x);
+      move(from, key, x, extra);
       left = round3(left - x);
     });
+  };
+
+  // A box with pockets closes pocket by pocket (computeSubClose): moves
+  // between its own pockets, then whatever is over a pocket's cap leaves
+  // down `chain`. Without pockets, the box keeps up to its own cap.
+  const subsOf = (key) => (boxes[key]?.subs?.length ? boxes[key].subs : null);
+  const closeWithSubs = (key, chain) => {
+    const sub = computeSubClose(subsOf(key));
+    for (const m of sub.internal) moves.push({ from: key, to: key, fromSub: m.fromSub, toSub: m.toSub, amount: m.amount });
+    for (const o of sub.overflow) pour(key, o.amount, chain, { fromSub: o.fromSub });
   };
 
   // 1. Groceries, office lunch + transport start fresh: net them against each
@@ -207,17 +279,30 @@ function computeClose(boxes) {
     }
   }
 
-  // 2. Guilt-free keeps up to its cap; only the extra goes to roaming.
-  if (bal.guilt_free > cap('guilt_free')) move('guilt_free', 'roaming', bal.guilt_free - cap('guilt_free'));
+  // 2. Guilt-free starts fresh: whatever is left goes to roaming, and an
+  //    overspend is covered from roaming (as far as roaming has money).
+  if ('guilt_free' in bal && 'roaming' in bal) {
+    if (bal.guilt_free > 0) move('guilt_free', 'roaming', bal.guilt_free);
+    else if (bal.guilt_free < 0) move('roaming', 'guilt_free', Math.min(-bal.guilt_free, Math.max(0, bal.roaming)));
+  }
 
-  // 3. Roaming and Home / Other Trips each keep up to their own cap; only the
-  //    extra goes to emergency -> investing.
+  // 3. Roaming and Home keep up to their cap (per pocket when they have
+  //    pockets); only the extra goes to emergency -> investing.
   for (const key of ['roaming', 'home_trips']) {
-    if (bal[key] > cap(key)) pour(key, bal[key] - cap(key), ['emergency', 'investing']);
+    if (!(key in bal)) continue;
+    if (subsOf(key)) closeWithSubs(key, ['emergency', 'investing']);
+    else if (bal[key] > cap(key)) pour(key, bal[key] - cap(key), ['emergency', 'investing']);
   }
 
   // 4. Emergency keeps up to its cap; the extra goes to investing.
   if (bal.emergency > cap('emergency')) move('emergency', 'investing', bal.emergency - cap('emergency'));
+
+  // 5. Investing's pockets: leftovers of the fresh-start pockets go to their
+  //    leftover pocket (nothing leaves the box - it's the end of the chain).
+  if (subsOf('investing')) {
+    const sub = computeSubClose(subsOf('investing'));
+    for (const m of sub.internal) moves.push({ from: 'investing', to: 'investing', fromSub: m.fromSub, toSub: m.toSub, amount: m.amount });
+  }
 
   return { balances: bal, moves };
 }
@@ -252,22 +337,29 @@ function computeSweep(gap, boxes) {
 
 // A move you asked for, from one box to another. A null amount means the
 // whole balance of the `from` box.
-function computeTransfer(from, to, amount, boxes) {
+// fromSub/toSub pick pockets; two pockets of the same box is a valid move.
+function computeTransfer(from, to, amount, boxes, { fromSub = null, toSub = null } = {}) {
   if (!BUCKET_KEYS.includes(from)) throw new Error(`Unknown box: ${from}`);
   if (!BUCKET_KEYS.includes(to)) throw new Error(`Unknown box: ${to}`);
-  if (from === to) throw new Error('Pick two different boxes');
-  const has = round3(Number(boxes[from].balance));
+  const pocket = (key, sub) => (sub ? (boxes[key].subs || []).find((x) => x.sub_key === sub) : null);
+  if (fromSub && !pocket(from, fromSub)) throw new Error(`Unknown pocket: ${fromSub}`);
+  if (toSub && !pocket(to, toSub)) throw new Error(`Unknown pocket: ${toSub}`);
+  if (from === to && (fromSub || null) === (toSub || null)) throw new Error('Pick two different boxes');
+  if (from === to && !(fromSub && toSub)) throw new Error('Pick the two pockets to move between');
+  const has = round3(Number(fromSub ? pocket(from, fromSub).balance : boxes[from].balance));
   const n = amount == null ? has : round3(Number(amount));
   if (!(n > 0)) throw new Error(amount == null ? 'That box is empty' : 'amount must be a positive number');
   if (n > has) throw new Error(`That box only has ${money(has)}`);
-  return { from, to, amount: n };
+  return { from, to, amount: n, ...(fromSub ? { fromSub } : {}), ...(toSub ? { toSub } : {}) };
 }
 
-function computeInterAccountTransfer(from, to, amount, fee, fromAccount, toAccount, boxes) {
+function computeInterAccountTransfer(from, to, amount, fee, fromAccount, toAccount, boxes, fromSub = null) {
   if (fromAccount === toAccount) throw new Error('Pick two different bank accounts');
   if (!BUCKET_KEYS.includes(from)) throw new Error(`Unknown box: ${from}`);
   if (!BUCKET_KEYS.includes(to)) throw new Error(`Unknown box: ${to}`);
-  const available = round3(Number(boxes[from]?.balance));
+  const pocket = fromSub ? (boxes[from]?.subs || []).find((x) => x.sub_key === fromSub) : null;
+  if (fromSub && !pocket) throw new Error(`Unknown pocket: ${fromSub}`);
+  const available = round3(Number(pocket ? pocket.balance : boxes[from]?.balance));
   const transferAmount = amount == null ? available : round3(Number(amount));
   if (!(transferAmount > 0)) throw new Error(amount == null ? 'That box is empty' : 'amount must be a positive number');
   if (transferAmount > available) throw new Error(`That box only has ${money(available)}`);
@@ -294,4 +386,7 @@ module.exports = {
   computeSweep,
   computeTransfer,
   computeInterAccountTransfer,
+  defaultSub,
+  splitIntoSubs,
+  computeSubClose,
 };

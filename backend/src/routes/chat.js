@@ -22,7 +22,17 @@ router.post('/', async (req, res) => {
     // Cards are optional: if the purses table isn't there yet, chat still works.
     const cards = await purses.listPurses().catch(() => []);
 
-    const result = await classifyChat(text, { activeReminders: activeReminders || [], purses: cards });
+    // Pockets are optional too (before the sub-boxes migration there are none).
+    const { data: pocketRows } = await supabase.from('account_sub_buckets').select('parent_key, sub_key, name').order('sort');
+    const seen = new Set();
+    const pockets = (pocketRows || []).filter((x) => {
+      const k = `${x.parent_key}/${x.sub_key}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+
+    const result = await classifyChat(text, { activeReminders: activeReminders || [], purses: cards, pockets });
 
     if (result.intent === 'add_reminder') {
       const reminderText = result.reminder_text || text;
@@ -56,6 +66,8 @@ router.post('/', async (req, res) => {
         result.entry.purse_id = card?.id || null;
         if (card && !result.entry.bucket) result.entry.bucket = 'transport';
         result.entry.bucket = suggestBucket(result.entry);
+        const sub = result.entry.sub_bucket;
+        result.entry.sub_bucket = sub && pockets.some((x) => x.parent_key === result.entry.bucket && x.sub_key === sub) ? sub : null;
       }
       return res.json({ intent: 'log_entry', suggestion: result.entry, raw_input: text });
     }

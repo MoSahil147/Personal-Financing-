@@ -522,11 +522,67 @@ function boxesFor(accountId) {
   return state.boxesByAccount[accountId] || [];
 }
 
+// ----- pockets (sub-boxes inside a box, each with its own monthly amount) -----
+// Pickers use "box" or "box/pocket" as their value.
+function subsOf(accountId, key) {
+  return boxesFor(accountId).find((b) => b.key === key)?.subs || [];
+}
+
+function defaultSubKey(subs) {
+  return (subs.find((x) => x.is_default) || subs[0])?.sub_key || null;
+}
+
+function pocketName(accountId, key, sub) {
+  return subsOf(accountId, key).find((x) => x.sub_key === sub)?.name || sub;
+}
+
+function boxLabel(key, sub, accountId) {
+  return sub ? `${boxName(key, accountId)} · ${pocketName(accountId, key, sub)}` : boxName(key, accountId);
+}
+
+function parsePick(value) {
+  const [bucket, sub] = String(value || '').split('/');
+  return { bucket: bucket || null, sub: sub || null };
+}
+
+// A box key from the chat parser becomes that box's default pocket.
+function pickValueFor(accountId, key) {
+  const subs = subsOf(accountId, key);
+  return subs.length ? `${key}/${defaultSubKey(subs)}` : key;
+}
+
+// The box (or pocket) a picker value points at, with its balance and limit.
+function pickTarget(accountId, value) {
+  const { bucket, sub } = parsePick(value);
+  const box = boxesFor(accountId).find((b) => b.key === bucket);
+  if (!box) return null;
+  const pocket = sub ? box.subs?.find((x) => x.sub_key === sub) : null;
+  return pocket
+    ? { key: bucket, sub, name: `${box.name} · ${pocket.name}`, balance: Number(pocket.balance), cap: pocket.cap }
+    : { key: bucket, sub: null, name: box.name, balance: box.balance, cap: box.cap };
+}
+
+// Options for every box; a box with pockets lists its pockets instead.
+function boxPickOptions(accountId, { includeBuffer = true } = {}) {
+  const options = [];
+  for (const b of boxesFor(accountId)) {
+    if (!includeBuffer && b.key === 'buffer') continue;
+    if (b.subs?.length) {
+      for (const x of b.subs) options.push({ value: `${b.key}/${x.sub_key}`, label: `${b.name} · ${x.name} (${fmt(x.balance)})` });
+    } else {
+      options.push({ value: b.key, label: `${b.name} (${fmt(b.balance)})` });
+    }
+  }
+  return options;
+}
+
 function updateTransferBoxOptions(selectId, accountId, selected) {
   const select = document.getElementById(selectId);
-  select.innerHTML = '<option value="">Pick a box</option>' + boxesFor(accountId)
-    .map((b) => `<option value="${b.key}">${escapeHtml(b.name)} (${fmt(b.balance)})</option>`).join('');
-  select.value = boxesFor(accountId).some((b) => b.key === selected) ? selected : '';
+  const options = boxPickOptions(accountId);
+  select.innerHTML = '<option value="">Pick a box</option>'
+    + options.map((o) => `<option value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</option>`).join('');
+  const wanted = selected && !selected.includes('/') ? pickValueFor(accountId, selected) : selected;
+  select.value = options.some((o) => o.value === wanted) ? wanted : '';
 }
 
 function openTransferModal({ from = null, to = null, amount = null, all = false, fromAccount = state.activeAccount, toAccount = state.activeAccount } = {}) {
@@ -555,10 +611,8 @@ document.getElementById('transfer-to-account').addEventListener('change', () => 
 function updateTransferHint() {
   const fromAccount = document.getElementById('transfer-from-account').value;
   const toAccount = document.getElementById('transfer-to-account').value;
-  const fromKey = document.getElementById('transfer-from').value;
-  const toKey = document.getElementById('transfer-to').value;
-  const from = boxesFor(fromAccount).find((b) => b.key === fromKey);
-  const to = boxesFor(toAccount).find((b) => b.key === toKey);
+  const from = pickTarget(fromAccount, document.getElementById('transfer-from').value);
+  const to = pickTarget(toAccount, document.getElementById('transfer-to').value);
   const all = document.getElementById('transfer-all').checked;
   const amountInput = document.getElementById('transfer-amount');
   amountInput.disabled = all;
@@ -566,7 +620,7 @@ function updateTransferHint() {
   if (all && from) amountInput.value = Math.max(0, from.balance - (fromAccount === toAccount ? 0 : fee));
   const hint = document.getElementById('transfer-hint');
   if (!from || !to) { hint.innerHTML = ''; return; }
-  if (fromAccount === toAccount && from.key === to.key) { hint.innerHTML = '<span class="bad">Pick two different boxes.</span>'; return; }
+  if (fromAccount === toAccount && from.key === to.key && from.sub === to.sub) { hint.innerHTML = '<span class="bad">Pick two different boxes.</span>'; return; }
   if (fromAccount === toAccount && fee > 0) { hint.innerHTML = '<span class="bad">A bank fee only applies between different accounts.</span>'; return; }
   const amount = Number(amountInput.value) || 0;
   const outgoing = amount + (fromAccount === toAccount ? 0 : fee);
@@ -585,8 +639,10 @@ document.getElementById('transfer-fee').addEventListener('input', updateTransfer
 document.getElementById('transfer-cancel').addEventListener('click', () => { document.getElementById('transfer-modal').hidden = true; });
 
 document.getElementById('transfer-save').addEventListener('click', async () => {
-  const from = document.getElementById('transfer-from').value;
-  const to = document.getElementById('transfer-to').value;
+  const fromPick = parsePick(document.getElementById('transfer-from').value);
+  const toPick = parsePick(document.getElementById('transfer-to').value);
+  const from = fromPick.bucket;
+  const to = toPick.bucket;
   const fromAccount = document.getElementById('transfer-from-account').value;
   const toAccount = document.getElementById('transfer-to-account').value;
   const all = document.getElementById('transfer-all').checked;
@@ -606,7 +662,9 @@ document.getElementById('transfer-save').addEventListener('click', async () => {
   try {
     await api('/api/buckets/transfer', {
       method: 'POST',
-      body: JSON.stringify({ from, to, from_account: fromAccount, to_account: toAccount, amount, fee, all }),
+      body: JSON.stringify({
+        from, to, from_sub: fromPick.sub, to_sub: toPick.sub, from_account: fromAccount, to_account: toAccount, amount, fee, all,
+      }),
     });
     document.getElementById('transfer-modal').hidden = true;
     await Promise.all(accountIds().map((account) => loadSection(() => refreshBoxes(account), `${accountName(account)} boxes`)));
@@ -644,6 +702,26 @@ function capBar(key, filled, cap, accountId) {
     <div class="box-cap-label">${label} ${fmt(cap)}</div>`;
 }
 
+function pocketList(box, accountId) {
+  const spent = state.boxSpentByAccount[accountId] || {};
+  return `<div class="pockets">${box.subs.map((x) => {
+    const notes = [];
+    if (Number(x.share) > 0) notes.push(`${fmt(x.share)} a month`);
+    if (x.carries === false) notes.push('starts fresh');
+    if (x.cap != null) notes.push(`limit ${fmt(x.cap)}`);
+    const used = spent[`${box.key}/${x.sub_key}`];
+    if (used) notes.push(`spent ${fmt(used)}`);
+    const bar = x.cap != null && Number(x.cap) > 0
+      ? `<div class="box-cap-bar"><div style="width:${Math.max(0, Math.min(100, (Number(x.balance) / Number(x.cap)) * 100))}%;background:${boxColor(box.key, accountId)}"></div></div>`
+      : '';
+    return `<div class="pocket">
+      <div class="pocket-top"><span>${escapeHtml(x.name)}</span><strong class="${Number(x.balance) < 0 ? 'bad' : ''}">${fmt(x.balance)}</strong></div>
+      ${bar}
+      ${notes.length ? `<div class="pocket-meta">${escapeHtml(notes.join(' · '))}</div>` : ''}
+    </div>`;
+  }).join('')}</div>`;
+}
+
 async function refreshBoxes(accountId = primaryAccountId()) {
   const data = await api(`/api/buckets?account=${accountId}`);
   state.boxesByAccount[accountId] = data.buckets.map((b) => ({ ...b, balance: Number(b.balance) }));
@@ -666,7 +744,8 @@ async function refreshBoxes(accountId = primaryAccountId()) {
       <div class="box-name">${escapeHtml(b.name)}${Number(b.percent) > 0 ? ` <span class="box-percent">${Number(b.percent)}%</span>` : ''}</div>
       <div class="box-balance ${b.balance < 0 ? 'bad' : ''}">${fmt(b.balance)}</div>
       <div class="box-spent">Spent this month: ${fmt(state.boxSpentByAccount[accountId][b.key] || 0)}</div>
-      ${b.cap ? capBar(b.key, b.balance, Number(b.cap), accountId) : ''}`;
+      ${b.cap ? capBar(b.key, b.balance, Number(b.cap), accountId) : ''}
+      ${b.subs?.length ? pocketList(b, accountId) : ''}`;
     card.classList.toggle('open', state.openBoxes[accountId] === b.key);
     card.addEventListener('click', () => toggleBoxDetail(b.key, accountId));
     grid.appendChild(card);
@@ -735,12 +814,15 @@ async function renderBoxDetail(accountId) {
     if (out) spent += outAmount; else added += inAmount;
     const other = out ? m.to_bucket : m.from_bucket;
     const otherAccount = out ? m.to_account : m.from_account;
+    const otherSub = out ? m.to_sub : m.from_sub;
+    const ownSub = out ? m.from_sub : m.to_sub;
     // A spend/refund shows what it was for; a box-to-box move shows the other box.
     const title = m.entries?.category
       ? m.entries.category
-      : other ? `${out ? 'To' : 'From'} ${accountName(otherAccount)} ${boxName(other, otherAccount)}` : moveReasonLabel(m.reason);
+      : other ? `${out ? 'To' : 'From'} ${accountName(otherAccount)} ${boxLabel(other, otherSub, otherAccount)}` : moveReasonLabel(m.reason);
     const meta = [m.move_date, moveReasonLabel(m.reason)];
-    if (m.entries?.category && other) meta.push(`${out ? 'to' : 'from'} ${accountName(otherAccount)} ${boxName(other, otherAccount)}`);
+    if (ownSub) meta.push(pocketName(accountId, key, ownSub));
+    if (m.entries?.category && other) meta.push(`${out ? 'to' : 'from'} ${accountName(otherAccount)} ${boxLabel(other, otherSub, otherAccount)}`);
     if (m.fee_amount > 0) meta.push(`bank fee ${fmt(m.fee_amount)}`);
     if (m.entries?.payment_method === 'credit') meta.push('card');
     if (m.entries?.note) meta.push(m.entries.note);
@@ -853,8 +935,8 @@ async function refreshBoxHistory(accountId) {
   list.innerHTML = moves.length ? '' : '<li><span class="ledger-meta">No box moves yet.</span></li>';
   for (const m of moves) {
     const route = m.from_bucket && m.to_bucket
-      ? `${accountName(m.from_account)} ${boxName(m.from_bucket, m.from_account)} → ${accountName(m.to_account)} ${boxName(m.to_bucket, m.to_account)}`
-      : m.to_bucket ? `+ ${boxName(m.to_bucket, m.to_account)}` : `− ${boxName(m.from_bucket, m.from_account)}`;
+      ? `${accountName(m.from_account)} ${boxLabel(m.from_bucket, m.from_sub, m.from_account)} → ${accountName(m.to_account)} ${boxLabel(m.to_bucket, m.to_sub, m.to_account)}`
+      : m.to_bucket ? `+ ${boxLabel(m.to_bucket, m.to_sub, m.to_account)}` : `− ${boxLabel(m.from_bucket, m.from_sub, m.from_account)}`;
     const li = document.createElement('li');
     li.innerHTML = `
       <span><strong>${escapeHtml(route)}</strong><span class="ledger-meta">${m.move_date} · ${escapeHtml(moveReasonLabel(m.reason))}${m.fee_amount > 0 ? ` · fee ${fmt(m.fee_amount)}` : ''}</span></span>
@@ -1406,15 +1488,14 @@ function updateBucketOptions(selected) {
   const select = document.getElementById('confirm-bucket');
   const options = [];
   if (!isExpense) options.push({ value: 'split', label: 'All boxes (split by %)' });
-  for (const b of boxesFor(state.activeAccount)) {
-    if (b.key !== 'buffer') options.push({ value: b.key, label: `${b.name} (${fmt(b.balance)})` });
-  }
+  options.push(...boxPickOptions(state.activeAccount, { includeBuffer: false }));
   options.push({ value: '', label: "Don't touch any box" });
   select.innerHTML = options.map((o) => `<option value="${o.value}">${escapeHtml(o.label)}</option>`).join('');
 
-  const fallback = isExpense ? 'guilt_free' : 'split';
+  const fallback = isExpense ? pickValueFor(state.activeAccount, 'guilt_free') : 'split';
   // undefined = no suggestion (use the default); null = parser said "no box".
-  const wanted = selected === undefined ? fallback : (selected ?? '');
+  const raw = selected === undefined ? fallback : (selected ?? '');
+  const wanted = raw && raw !== 'split' && !raw.includes('/') ? pickValueFor(state.activeAccount, raw) : raw;
   select.value = options.some((o) => o.value === wanted) ? wanted : fallback;
   state.suggestedBucket = select.value;
   resetNewMonth();
@@ -1425,6 +1506,13 @@ function updateBucketOptions(selected) {
 function resetNewMonth() {
   document.getElementById('confirm-new-month').checked = categorySelect.value === 'Salary';
   updateBucketHint();
+}
+
+function closeMoveText(closeMoves) {
+  const a = state.activeAccount;
+  return closeMoves.length
+    ? closeMoves.map((m) => `${escapeHtml(boxLabel(m.from, m.fromSub, a))} → ${escapeHtml(boxLabel(m.to, m.toSub, a))} <strong>${fmt(m.amount)}</strong>`).join(' · ')
+    : 'nothing to move';
 }
 
 async function updateBucketHint() {
@@ -1448,13 +1536,16 @@ async function updateBucketHint() {
     const params = new URLSearchParams({ amount, category: categorySelect.value, new_month: newMonth ? '1' : '0' });
     try {
       params.set('account', state.activeAccount);
-      const { closeMoves, shares } = await api(`/api/buckets/split-preview?${params}`);
+      const { closeMoves, shares, subShares = {} } = await api(`/api/buckets/split-preview?${params}`);
       const splitText = Object.entries(shares)
-        .map(([key, v]) => `${escapeHtml(boxName(key, state.activeAccount))} <strong>${fmt(v)}</strong>`)
+        .map(([key, v]) => {
+          const inner = subShares[key]
+            ? ` (${Object.entries(subShares[key]).map(([sub, a]) => `${escapeHtml(pocketName(state.activeAccount, key, sub))} ${fmt(a)}`).join(', ')})`
+            : '';
+          return `${escapeHtml(boxName(key, state.activeAccount))} <strong>${fmt(v)}</strong>${inner}`;
+        })
         .join(' · ');
-      const closeText = closeMoves.length
-        ? closeMoves.map((m) => `${escapeHtml(boxName(m.from, state.activeAccount))} → ${escapeHtml(boxName(m.to, state.activeAccount))} <strong>${fmt(m.amount)}</strong>`).join(' · ')
-        : 'nothing to move';
+      const closeText = closeMoveText(closeMoves);
       hint.innerHTML = (newMonth ? `<div>Month-end first: ${closeText}</div>` : '')
         + `<div>${newMonth ? 'Then split' : 'Will be split'}: ${splitText}</div>`;
     } catch (err) {
@@ -1463,7 +1554,7 @@ async function updateBucketHint() {
     return;
   }
 
-  const box = boxesFor(state.activeAccount).find((b) => b.key === value);
+  const box = pickTarget(state.activeAccount, value);
   if (!box) return;
   const picked = value === state.suggestedBucket ? 'I picked' : 'You picked';
   if (!isExpense) {
@@ -1476,9 +1567,7 @@ async function updateBucketHint() {
       const params = new URLSearchParams({ amount, category: categorySelect.value, new_month: '1' });
       params.set('account', state.activeAccount);
       const { closeMoves } = await api(`/api/buckets/split-preview?${params}`);
-      const closeText = closeMoves.length
-        ? closeMoves.map((m) => `${escapeHtml(boxName(m.from, state.activeAccount))} → ${escapeHtml(boxName(m.to, state.activeAccount))} <strong>${fmt(m.amount)}</strong>`).join(' · ')
-        : 'nothing to move';
+      const closeText = closeMoveText(closeMoves);
       hint.innerHTML = `<div>Month-end first: ${closeText}</div><div>Then: ${intoBox}</div>`;
     } catch (err) {
       hint.textContent = `Couldn't preview the month-end: ${err.message}`;
@@ -1517,7 +1606,7 @@ function openConfirmModal(suggestion, raw_input) {
   updateCreditAccountChoice();
   document.getElementById('confirm-date').value = suggestion.date || todayISO();
   document.getElementById('confirm-note').value = suggestion.note || '';
-  updateBucketOptions(suggestion.bucket);
+  updateBucketOptions(suggestion.bucket && suggestion.sub_bucket ? `${suggestion.bucket}/${suggestion.sub_bucket}` : suggestion.bucket);
   updatePurseOptions(suggestion.purse_id || '');
   document.getElementById('confirm-modal').hidden = false;
 }
@@ -1539,7 +1628,8 @@ document.getElementById('confirm-save').addEventListener('click', async () => {
     entry_date: document.getElementById('confirm-date').value,
     note: document.getElementById('confirm-note').value.trim(),
     raw_input: state.pendingSuggestion?.raw_input || null,
-    bucket: document.getElementById('confirm-bucket').value || null,
+    bucket: parsePick(document.getElementById('confirm-bucket').value).bucket,
+    sub_bucket: parsePick(document.getElementById('confirm-bucket').value).sub,
     new_month: !document.getElementById('confirm-new-month-row').hidden
       && document.getElementById('confirm-new-month').checked,
     purse_id: (!document.getElementById('confirm-purse-row').hidden && document.getElementById('confirm-purse').value) || null,
@@ -1793,17 +1883,19 @@ function xlSection(ws, at, title, headers, rows, formats = [], { total } = {}) {
 }
 
 function buildMonthWorkbook(ExcelJS, data) {
-  const { year, month, cycle, from, to, inProgress, entries, boxMoves, buckets, settings, bankAccounts, purses, purseMoves } = data;
+  const { year, month, cycle, from, to, inProgress, entries, boxMoves, buckets, settings, bankAccounts, purses, purseMoves, pockets = [] } = data;
   const periodName = cycle === 'salary'
     ? `Salary month ${niceDate(from)} – ${niceDate(to)}`
     : `${MONTH_NAMES[month - 1]} ${year}`;
   const periodNote = `${niceDate(from)} to ${niceDate(to)}${inProgress ? ' · still in progress (everything so far)' : ''} · made ${new Date().toLocaleString('en-GB')}`;
   const days = datesBetween(from, to);
   const boxNames = Object.fromEntries(buckets.map((b) => [`${b.account_id}:${b.key}`, b.name]));
-  const boxLabelFor = (accountId, key) => `${accountName(accountId)} · ${boxNames[`${accountId}:${key}`] || key}`;
+  const pocketNames = Object.fromEntries(pockets.map((x) => [`${x.account_id}:${x.parent_key}/${x.sub_key}`, x.name]));
+  const boxLabelFor = (accountId, key, sub = null) => `${accountName(accountId)} · ${boxNames[`${accountId}:${key}`] || key}`
+    + (sub ? ` · ${pocketNames[`${accountId}:${key}/${sub}`] || sub}` : '');
   const cardNames = Object.fromEntries(purses.map((p) => [p.id, p.name]));
   const entryById = Object.fromEntries(entries.map((e) => [e.id, e]));
-  const boxLabel = (e) => (e.bucket === 'split' ? `All ${accountName(e.bank_account)} boxes (split)` : e.bucket ? boxLabelFor(e.bank_account, e.bucket) : '');
+  const boxLabel = (e) => (e.bucket === 'split' ? `All ${accountName(e.bank_account)} boxes (split)` : e.bucket ? boxLabelFor(e.bank_account, e.bucket, e.sub_bucket) : '');
   const amt = (e) => Number(e.amount);
   const sum = (list, f = amt) => list.reduce((s, x) => s + f(x), 0);
 
@@ -2061,6 +2153,25 @@ function buildMonthWorkbook(ExcelJS, data) {
   xlTotal(bxTotal);
 
   let bRow = buckets.length + 4;
+  if (pockets.length) {
+    bx.getCell(bRow, 1).value = 'Pockets inside boxes';
+    bx.getCell(bRow, 1).font = { bold: true, size: 12, color: { argb: XL.navy } };
+    bRow += 1;
+    ['Pocket', 'Balance now', 'Came in', 'Went out', 'Of which spent', 'Limit', 'A month'].forEach((h, i) => { bx.getCell(bRow, i + 1).value = h; });
+    xlHeader(bx.getRow(bRow));
+    pockets.forEach((x, i) => {
+      const inMoves = boxMoves.filter((m) => m.to_account === x.account_id && m.to_bucket === x.parent_key && m.to_sub === x.sub_key);
+      const outMoves = boxMoves.filter((m) => m.from_account === x.account_id && m.from_bucket === x.parent_key && m.from_sub === x.sub_key);
+      const row = bx.getRow(bRow + 1 + i);
+      row.values = [
+        boxLabelFor(x.account_id, x.parent_key, x.sub_key), Number(x.balance), sum(inMoves), sum(outMoves),
+        sum(outMoves.filter((m) => m.reason === 'spend')), x.cap == null ? null : Number(x.cap), Number(x.share) || null,
+      ];
+      [2, 3, 4, 5, 6, 7].forEach((c) => { row.getCell(c).numFmt = XL_MONEY; });
+      xlZebra(row, i);
+    });
+    bRow += pockets.length + 3;
+  }
   bx.getCell(bRow, 1).value = 'Every box move in this period';
   bx.getCell(bRow, 1).font = { bold: true, size: 12, color: { argb: XL.navy } };
   bRow += 1;
@@ -2072,8 +2183,8 @@ function buildMonthWorkbook(ExcelJS, data) {
     const row = bx.getRow(bRow + 1 + i);
     row.values = [
       xlDate(m.move_date),
-      m.from_bucket ? boxLabelFor(m.from_account, m.from_bucket) : '(money in)',
-      m.to_bucket ? boxLabelFor(m.to_account, m.to_bucket) : '(spent)',
+      m.from_bucket ? boxLabelFor(m.from_account, m.from_bucket, m.from_sub) : '(money in)',
+      m.to_bucket ? boxLabelFor(m.to_account, m.to_bucket, m.to_sub) : '(spent)',
       Number(m.amount),
       moveReasonLabel(m.reason),
       e ? describeEntry(e) : '',

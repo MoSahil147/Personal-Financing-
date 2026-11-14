@@ -16,6 +16,8 @@ router.post('/', async (req, res) => {
   // never touches the boxes - the boxes paid when the card was used.
   const isCardPayment = type === 'expense' && category === 'Credit Card Payment';
   const bucket = isCardPayment ? null : req.body?.bucket || null;
+  // A pocket inside the box (e.g. one investment); none = the box's default pocket.
+  const subBucket = bucket && bucket !== 'split' ? req.body?.sub_bucket || null : null;
   // A salary starts a new month: run the month-end close before the money goes
   // into the boxes (split across all of them or into one).
   const newMonth = type === 'income' && bucket !== null && req.body?.new_month === true;
@@ -90,6 +92,8 @@ router.post('/', async (req, res) => {
       note,
       raw_input,
       bucket,
+      // Only sent when set, so entries still save before the sub-boxes migration.
+      ...(subBucket ? { sub_bucket: subBucket } : {}),
       // Only sent when set, so entries still save before the purses migration has run.
       ...(purseId ? { purse_id: purseId } : {}),
     })

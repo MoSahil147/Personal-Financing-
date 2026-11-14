@@ -15,11 +15,39 @@ async function resolveAccountId(accountId) {
   return resolved;
 }
 
+function normalizeSub(x) {
+  return {
+    ...x,
+    balance: Number(x.balance),
+    share: Number(x.share) || 0,
+    cap: x.cap == null ? null : Number(x.cap),
+  };
+}
+
+// Pockets for the given accounts, grouped as { "account:box": [pockets] }.
+// Before the sub-boxes migration has run there are simply no pockets.
+async function loadSubs(accountIdList) {
+  if (!accountIdList.length) return {};
+  const { data, error } = await supabase.from('account_sub_buckets').select('*')
+    .in('account_id', accountIdList).order('sort');
+  if (error) {
+    if (/account_sub_buckets/.test(error.message)) return {};
+    throw new Error(error.message);
+  }
+  const grouped = {};
+  for (const x of data) (grouped[accountBucketId(x.account_id, x.parent_key)] ||= []).push(normalizeSub(x));
+  return grouped;
+}
+
 async function loadBuckets(accountId) {
   accountId = await resolveAccountId(accountId);
-  const { data, error } = await supabase.from('account_buckets').select('*').eq('account_id', accountId).order('sort');
+  const [{ data, error }, subs] = await Promise.all([
+    supabase.from('account_buckets').select('*').eq('account_id', accountId).order('sort'),
+    loadSubs([accountId]),
+  ]);
   if (error) throw new Error(error.message);
   return data.map((b) => ({
+    subs: subs[accountBucketId(accountId, b.bucket_key)] || [],
     ...b,
     key: b.bucket_key,
     balance: Number(b.balance),
@@ -51,16 +79,37 @@ async function realMoney(accountId) {
   return math.round3(balance);
 }
 
+// Applies move rows to the box balances - and to the pockets of boxes that
+// have them, so pockets always add up to their box. A move into or out of a
+// box with pockets uses the named pocket, or the box's default pocket (the
+// row is filled in with the pocket it used, so it can be reversed exactly).
 async function adjustBalances(moves) {
   const accountIds = [...new Set(moves.flatMap((m) => [m.from_account, m.to_account].filter(Boolean)))];
   if (!accountIds.length) return;
-  const { data, error } = await supabase.from('account_buckets').select('*').in('account_id', accountIds);
+  const [{ data, error }, subsByBox] = await Promise.all([
+    supabase.from('account_buckets').select('*').in('account_id', accountIds),
+    loadSubs(accountIds),
+  ]);
   if (error) throw new Error(error.message);
   const map = new Map(data.map((b) => [accountBucketId(b.account_id, b.bucket_key), {
     ...b,
     balance: Number(b.balance),
   }]));
   const touched = new Set();
+  const touchedSubs = new Set();
+
+  const pocket = (boxId, subKey, side) => {
+    const subs = subsByBox[boxId];
+    if (!subs?.length) {
+      if (subKey) throw new Error(`That box has no pocket ${subKey}`);
+      return null;
+    }
+    const key = subKey || math.defaultSub(subs);
+    const sub = subs.find((x) => x.sub_key === key);
+    if (!sub) throw new Error(`Unknown pocket: ${key}`);
+    touchedSubs.add(sub);
+    return { sub, key, side };
+  };
 
   for (const m of moves) {
     if (m.from_account && m.from_bucket) {
@@ -69,6 +118,8 @@ async function adjustBalances(moves) {
       if (!box) throw new Error(`Unknown box: ${m.from_bucket} (${m.from_account.toUpperCase()})`);
       box.balance = math.round3(box.balance - m.amount);
       touched.add(id);
+      const p = pocket(id, m.from_sub, 'from');
+      if (p) { p.sub.balance = math.round3(p.sub.balance - m.amount); m.from_sub = p.key; }
     }
     if (m.to_account && m.to_bucket) {
       const id = accountBucketId(m.to_account, m.to_bucket);
@@ -76,6 +127,8 @@ async function adjustBalances(moves) {
       if (!box) throw new Error(`Unknown box: ${m.to_bucket} (${m.to_account.toUpperCase()})`);
       box.balance = math.round3(box.balance + m.amount);
       touched.add(id);
+      const p = pocket(id, m.to_sub, 'to');
+      if (p) { p.sub.balance = math.round3(p.sub.balance + m.amount); m.to_sub = p.key; }
     }
   }
 
@@ -87,12 +140,35 @@ async function adjustBalances(moves) {
       .eq('bucket_key', box.bucket_key);
     if (updateError) throw new Error(updateError.message);
   }
+  for (const sub of touchedSubs) {
+    const { error: subError } = await supabase.from('account_sub_buckets')
+      .update({ balance: sub.balance })
+      .eq('account_id', sub.account_id)
+      .eq('parent_key', sub.parent_key)
+      .eq('sub_key', sub.sub_key);
+    if (subError) throw new Error(subError.message);
+  }
+}
+
+// Money split into boxes (salary, income, first setup) is split again into
+// each box's pockets by their monthly amounts; other money uses one pocket.
+const POCKET_SPLIT_REASONS = ['salary', 'income', 'setup'];
+function expandIntoPockets(moves, boxes, reason) {
+  if (!POCKET_SPLIT_REASONS.includes(reason)) return moves;
+  return moves.flatMap((m) => {
+    const subs = m.to && !m.from && !m.toSub ? boxes[m.to]?.subs : null;
+    if (!subs?.length) return [m];
+    return Object.entries(math.splitIntoSubs(m.amount, subs)).map(([toSub, amount]) => ({ ...m, toSub, amount }));
+  });
 }
 
 async function applyMoves(moves, { reason, entry_id = null, date = todayISO(), accountId }) {
-  const real = moves.filter((m) => m.amount > 0);
-  if (!real.length) return;
   accountId = await resolveAccountId(accountId);
+  let real = moves.filter((m) => m.amount > 0);
+  if (!real.length) return;
+  if (POCKET_SPLIT_REASONS.includes(reason)) {
+    real = expandIntoPockets(real, toMap(await loadBuckets(accountId)), reason).filter((m) => m.amount > 0);
+  }
   const rows = real.map((m) => ({
     move_date: date,
     from_account: m.from ? accountId : null,
@@ -102,9 +178,13 @@ async function applyMoves(moves, { reason, entry_id = null, date = todayISO(), a
     amount: m.amount,
     reason,
     entry_id,
+    ...(m.fromSub ? { from_sub: m.fromSub } : {}),
+    ...(m.toSub ? { to_sub: m.toSub } : {}),
   }));
   await adjustBalances(rows);
-  const { error } = await supabase.from('account_bucket_moves').insert(rows);
+  // Pocket columns only exist after the sub-boxes migration.
+  const hasPockets = rows.some((r) => r.from_sub || r.to_sub);
+  const { error } = await supabase.from('account_bucket_moves').insert(hasPockets ? rows : rows.map(({ from_sub, to_sub, ...r }) => r));
   if (error) throw new Error(error.message);
 }
 
@@ -120,7 +200,13 @@ function planIncome(amount, category, newMonth, boxes) {
     closeMoves = closed.moves;
     after = Object.fromEntries(Object.entries(boxes).map(([k, b]) => [k, { ...b, balance: closed.balances[k] }]));
   }
-  return { closeMoves, shares: splitFor(category, amount, after) };
+  const shares = splitFor(category, amount, after);
+  // How each box's share is split into its pockets, for the preview.
+  const subShares = {};
+  for (const [key, v] of Object.entries(shares)) {
+    if (after[key]?.subs?.length) subShares[key] = math.splitIntoSubs(v, after[key].subs);
+  }
+  return { closeMoves, shares, subShares };
 }
 
 async function applyEntry(entry, bucket, { newMonth = false } = {}) {
@@ -129,8 +215,9 @@ async function applyEntry(entry, bucket, { newMonth = false } = {}) {
   const accountId = await resolveAccountId(entry.bank_account);
   const opts = { entry_id: entry.id, date: entry.entry_date, accountId };
 
+  const sub = entry.sub_bucket || null;
   if (entry.type === 'expense') {
-    return applyMoves([{ from: bucket, amount }], { ...opts, reason: 'spend' });
+    return applyMoves([{ from: bucket, amount, ...(sub ? { fromSub: sub } : {}) }], { ...opts, reason: 'spend' });
   }
   if (newMonth) {
     const { moves } = math.computeClose(toMap(await loadBuckets(accountId)));
@@ -144,7 +231,7 @@ async function applyEntry(entry, bucket, { newMonth = false } = {}) {
     });
   }
   const reason = newMonth ? 'salary' : entry.category === 'Refund' ? 'refund' : 'income';
-  return applyMoves([{ to: bucket, amount }], { ...opts, reason });
+  return applyMoves([{ to: bucket, amount, ...(sub ? { toSub: sub } : {}) }], { ...opts, reason });
 }
 
 async function getEntryMoves(entryId) {
@@ -157,8 +244,10 @@ async function reverseMoves(moves) {
   await adjustBalances(moves.map((m) => ({
     from_account: m.to_account,
     from_bucket: m.to_bucket,
+    from_sub: m.to_sub || null,
     to_account: m.from_account,
     to_bucket: m.from_bucket,
+    to_sub: m.from_sub || null,
     amount: Number(m.amount),
   })));
 }
@@ -218,15 +307,20 @@ async function monthStartedAt(accountId) {
 async function spentThisMonth(accountId) {
   accountId = await resolveAccountId(accountId);
   const since = await monthStartedAt(accountId);
-  let query = supabase.from('account_bucket_moves').select('from_bucket, amount, reason')
+  let query = supabase.from('account_bucket_moves').select('*')
     .eq('from_account', accountId).in('reason', ['spend', 'close']);
   if (since) query = query.gte('created_at', since);
   const { data, error } = await query;
   if (error) throw new Error(error.message);
+  // Box totals by key, pocket totals by "box/pocket".
   const spent = {};
   for (const m of data) {
     if (m.reason === 'close' && m.from_bucket !== 'buffer') continue;
     spent[m.from_bucket] = math.round3((spent[m.from_bucket] || 0) + Number(m.amount));
+    if (m.from_sub) {
+      const key = `${m.from_bucket}/${m.from_sub}`;
+      spent[key] = math.round3((spent[key] || 0) + Number(m.amount));
+    }
   }
   return spent;
 }
@@ -252,14 +346,14 @@ async function sweepUnallocated(accountId) {
   await applyMoves(math.computeSweep(real - total, toMap(boxes)), { reason: 'sweep', accountId });
 }
 
-async function transfer(from, to, amount, accountId) {
+async function transfer(from, to, amount, accountId, { fromSub = null, toSub = null } = {}) {
   accountId = await resolveAccountId(accountId);
-  const move = math.computeTransfer(from, to, amount, toMap(await loadBuckets(accountId)));
+  const move = math.computeTransfer(from, to, amount, toMap(await loadBuckets(accountId)), { fromSub, toSub });
   await applyMoves([move], { reason: 'transfer', accountId });
   return move;
 }
 
-async function transferBetweenAccounts({ fromAccount, from, toAccount, to, amount, fee = 0 }) {
+async function transferBetweenAccounts({ fromAccount, from, toAccount, to, amount, fee = 0, fromSub = null, toSub = null }) {
   const ids = await accountIds();
   if (!ids.includes(fromAccount) || !ids.includes(toAccount)) {
     throw new Error('Pick valid source and destination accounts');
@@ -269,11 +363,14 @@ async function transferBetweenAccounts({ fromAccount, from, toAccount, to, amoun
   const boxes = toMap(await loadBuckets(fromAccount));
   if (fromAccount === toAccount) {
     if (feeAmount) throw new Error('A transfer fee is only available between different bank accounts');
-    const move = math.computeTransfer(from, to, amount, boxes);
+    const move = math.computeTransfer(from, to, amount, boxes, { fromSub, toSub });
     await applyMoves([move], { reason: 'transfer', accountId: fromAccount });
     return move;
   }
-  const move = math.computeInterAccountTransfer(from, to, amount, feeAmount, fromAccount, toAccount, boxes);
+  const move = math.computeInterAccountTransfer(from, to, amount, feeAmount, fromAccount, toAccount, boxes, fromSub);
+  const toBoxes = toMap(await loadBuckets(toAccount));
+  if (toSub && !(toBoxes[to]?.subs || []).some((x) => x.sub_key === toSub)) throw new Error(`Unknown pocket: ${toSub}`);
+  const usesPockets = Boolean(fromSub || toSub || boxes[from]?.subs?.length || toBoxes[to]?.subs?.length);
 
   const { data: id, error } = await supabase.rpc('transfer_between_bank_accounts', {
     p_from_account: fromAccount,
@@ -283,6 +380,8 @@ async function transferBetweenAccounts({ fromAccount, from, toAccount, to, amoun
     p_amount: move.amount,
     p_fee: move.fee,
     p_move_date: todayISO(),
+    // Only sent when pockets are involved, so this works before the sub-boxes migration.
+    ...(usesPockets ? { p_from_sub: fromSub, p_to_sub: toSub } : {}),
   });
   if (error) throw new Error(error.message);
   const { data, error: fetchError } = await supabase.from('account_bucket_moves').select('*').eq('id', id).single();

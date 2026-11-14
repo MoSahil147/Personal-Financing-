@@ -18,11 +18,15 @@ const CATEGORIES = [
 // Classifies a chat message into one of the things this app understands:
 // logging a transaction, moving money (cash/bank, box to box), a card fare,
 // adding a reminder, or removing an existing one.
-async function classifyChat(text, { activeReminders = [], purses = [] } = {}) {
+async function classifyChat(text, { activeReminders = [], purses = [], pockets = [] } = {}) {
   const remindersList = activeReminders.length
     ? activeReminders.map((r) => `${r.id}: ${r.text}`).join('\n')
     : '(none)';
   const pursesList = purses.length ? purses.map((p) => p.name).join(', ') : '(none)';
+  // Pockets inside boxes - keys and names come from the database.
+  const pocketsList = pockets.length
+    ? pockets.map((x) => `${x.parent_key}: ${x.sub_key} (${x.name})`).join('; ')
+    : '(none)';
 
   const system = `You are the message router for a personal finance chat bar. Today's date is ${todayISO()}.
 Classify the user's message into exactly one intent:
@@ -40,6 +44,9 @@ ${remindersList}
 
 PREPAID CARDS (name): ${pursesList}
 Recharging / topping up one of these cards ("recharged bus card 1234", "topped up card 5678") is a "log_entry" expense: category "Transport", classification "need", bucket "transport" (unless they say another box), payment_method as usual (debit by default, cash if they paid cash), and "purse" set to that card's name from the list (or the number they said). For every other entry "purse" is null.
+
+POCKETS INSIDE BOXES (box: pocket_key (name)): ${pocketsList}
+When the chosen "bucket" has pockets, also set "sub_bucket" to the pocket_key that best matches what the money was for (by the pocket's name); otherwise "sub_bucket" is null. A subscription, stock purchase, investment or gym fee that matches an investing pocket's name goes to bucket "investing" with that pocket, not to guilt_free.
 
 For "log_entry", fill "entry" using these rules:
 "category" MUST be exactly one of this fixed list (same spelling, same casing) - never invent a new one: ${CATEGORIES.join(', ')}.
@@ -64,7 +71,7 @@ Quick test for travel: office commute (or no purpose given) -> transport; to a r
 Respond with ONLY a JSON object, no prose, matching this exact shape:
 {
   "intent": "log_entry" | "cash_withdrawal" | "cash_deposit" | "box_transfer" | "card_ride" | "add_reminder" | "remove_reminder" | "chat",
-  "entry": { "type": "income"|"expense", "amount": number|null, "category": string, "classification": "need"|"want"|"luxury"|"savings"|"investment"|null, "payment_method": "debit"|"credit"|"cash"|null, "date": "YYYY-MM-DD", "note": string, "bucket": string, "purse": string|null } | null,
+  "entry": { "type": "income"|"expense", "amount": number|null, "category": string, "classification": "need"|"want"|"luxury"|"savings"|"investment"|null, "payment_method": "debit"|"credit"|"cash"|null, "date": "YYYY-MM-DD", "note": string, "bucket": string, "sub_bucket": string|null, "purse": string|null } | null,
   "ride_amount": number | null,
   "purse": string | null,
   "withdrawal_amount": number | null,

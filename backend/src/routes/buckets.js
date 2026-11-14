@@ -52,6 +52,8 @@ router.get('/split-preview', async (req, res) => {
 // whole balance as it is right now.
 router.post('/transfer', async (req, res) => {
   const { from, to, amount, all, from_account, to_account, fee } = req.body || {};
+  const fromSub = req.body?.from_sub || null;
+  const toSub = req.body?.to_sub || null;
   const n = all || amount == null || amount === '' ? null : Number(amount);
   if (n !== null && !(n > 0)) return res.status(400).json({ error: 'amount must be a positive number' });
   const feeAmount = fee === undefined || fee === '' ? 0 : Number(fee);
@@ -60,7 +62,9 @@ router.post('/transfer', async (req, res) => {
     if (from_account || to_account) {
       if (n === null) {
         const source = (await buckets.overview(from_account)).buckets.find((b) => b.bucket_key === from);
-        const amount = source ? source.balance - (from_account === to_account ? 0 : feeAmount) : 0;
+        const pocket = fromSub ? source?.subs?.find((x) => x.sub_key === fromSub) : null;
+        const has = pocket ? pocket.balance : source?.balance || 0;
+        const amount = has - (from_account === to_account ? 0 : feeAmount);
         if (!(amount > 0)) return res.status(400).json({ error: 'That source box has no transferable balance after the fee' });
         res.json(await buckets.transferBetweenAccounts({
           fromAccount: from_account,
@@ -69,6 +73,8 @@ router.post('/transfer', async (req, res) => {
           to,
           amount,
           fee: feeAmount,
+          fromSub,
+          toSub,
         }));
       } else {
         res.json(await buckets.transferBetweenAccounts({
@@ -78,10 +84,12 @@ router.post('/transfer', async (req, res) => {
           to,
           amount: n,
           fee: feeAmount,
+          fromSub,
+          toSub,
         }));
       }
     } else {
-      res.json(await buckets.transfer(from, to, n, req.body?.account));
+      res.json(await buckets.transfer(from, to, n, req.body?.account, { fromSub, toSub }));
     }
   } catch (err) {
     res.status(400).json({ error: err.message });

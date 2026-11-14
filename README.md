@@ -74,6 +74,13 @@ dashboard shows monthly + yearly charts, budget alerts, and reminders.
 - An expense paid by **debit** reduces the selected bank balance immediately;
   **credit** adds to the current card debt without reducing a bank balance.
 - Credit-card spending and bill settlement use the secondary bank account.
+- A box can hold **pockets** (sub-boxes): incoming money is split into them by
+  their monthly amounts, a spend or move names the pocket, and the pockets
+  always add up to the box. A pocket can start fresh each month (its leftover
+  goes to another pocket of the same box) or build up to its own limit, with
+  the extra leaving at month end like the box's own extra. Guilt-free starts
+  fresh each month: its leftover goes to Roaming. Pocket names and amounts
+  live only in the database (`backend/migrations/2026-11-14-sub-boxes.sql`).
 - Paying the card bill is not counted as spending again (the purchases were
   already counted), on the dashboard and in the Excel report alike. Totals
   show debit, credit and cash separately plus spending across all accounts.
